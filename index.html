@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0a1330">
+<title>ARISE</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Marcellus&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#0a1330; --bg2:#10204f; --lapis:#1d3a8a; --panel:rgba(14,30,78,.72);
+  --sys:#6ec8ff; --sys-soft:rgba(110,200,255,.18); --gold:#d9b44a; --gold-soft:rgba(217,180,74,.16);
+  --ink:#e8ecf8; --muted:#9aa6c8; --line:rgba(160,180,230,.18); --ok:#7fd3a8;
+  --era:#2b2a63; --era-accent:#8e8cd8;
+  --radius:14px; --head:'Marcellus', Georgia, serif;
+}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html,body{margin:0}
+body{
+  background:radial-gradient(120% 80% at 50% 0%, var(--era) 0%, var(--bg2) 35%, var(--bg) 75%) fixed, var(--bg);
+  color:var(--ink); font:15px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  min-height:100vh; padding-bottom:84px; -webkit-tap-highlight-color:transparent;
+}
+body.safe{background:radial-gradient(120% 80% at 50% 0%, #163a3a 0%, #0f2a3a 40%, var(--bg) 80%) fixed, var(--bg)}
+.wrap{max-width:540px; margin:0 auto; padding:14px 16px 24px}
+header.top{display:flex; align-items:center; gap:10px; padding:4px 0 10px}
+header.top .brand{font-family:var(--head); letter-spacing:.18em; color:var(--gold); font-size:18px}
+header.top .date{color:var(--muted); font-size:13px; margin-left:auto}
+.iconbtn{background:none; border:1px solid var(--line); color:var(--muted); border-radius:10px; padding:6px 9px; font-size:14px; cursor:pointer}
+.chip{display:inline-flex; align-items:center; gap:5px; font-size:12px; padding:3px 9px; border-radius:999px; border:1px solid var(--line); color:var(--muted); background:rgba(255,255,255,.03); white-space:nowrap}
+.chip.gold{border-color:rgba(217,180,74,.5); color:var(--gold)}
+.chip.sys{border-color:rgba(110,200,255,.45); color:var(--sys)}
+.chip.path{border-color:transparent; color:#0a1330; font-weight:600}
+h2{font-family:var(--head); font-weight:400; font-size:19px; margin:22px 0 10px; color:var(--ink); letter-spacing:.02em}
+h3{font-family:var(--head); font-weight:400; font-size:16px; margin:0 0 8px}
+.muted{color:var(--muted)} .small{font-size:12.5px} .gold{color:var(--gold)}
+.card{background:var(--panel); border:1px solid var(--line); border-radius:var(--radius); padding:14px; margin:10px 0; backdrop-filter:blur(6px)}
+.system{background:linear-gradient(180deg, rgba(20,48,120,.78), rgba(10,26,70,.8)); border:1px solid rgba(110,200,255,.55);
+  box-shadow:0 0 18px rgba(80,170,255,.25), inset 0 0 24px rgba(80,170,255,.08); border-radius:10px; padding:14px 16px; margin:10px 0}
+.system .line{font-family:var(--head); color:#d8eeff; letter-spacing:.02em}
+.system .line::before{content:"["; color:var(--sys); margin-right:2px}
+.system .line::after{content:"]"; color:var(--sys); margin-left:2px}
+.btn{appearance:none; border:1px solid rgba(110,200,255,.45); background:rgba(110,200,255,.1); color:#dff1ff; border-radius:10px; padding:8px 13px; font:inherit; font-size:14px; cursor:pointer}
+.btn:hover{background:rgba(110,200,255,.18)}
+.btn.gold{border-color:rgba(217,180,74,.6); background:var(--gold-soft); color:#f3dc97}
+.btn.ghost{border-color:var(--line); background:transparent; color:var(--muted)}
+.btn.small{padding:5px 10px; font-size:13px}
+.btn.on{background:rgba(127,211,168,.18); border-color:rgba(127,211,168,.6); color:#c9f2dc}
+.row{display:flex; align-items:center; gap:8px; flex-wrap:wrap}
+.spread{display:flex; align-items:center; justify-content:space-between; gap:10px}
+.quest{display:flex; gap:12px; align-items:flex-start; padding:11px 0; border-top:1px solid var(--line)}
+.quest:first-of-type{border-top:0}
+.quest .num{font-family:var(--head); color:var(--sys); width:16px; flex:none; padding-top:1px}
+.quest .body{flex:1; min-width:0}
+.quest .t{font-weight:600}
+.quest .d{color:var(--muted); font-size:13px}
+.quest .acts{display:flex; gap:6px; margin-top:7px; flex-wrap:wrap}
+.quest.done .t{color:#c9f2dc}
+.bar{height:8px; border-radius:6px; background:rgba(255,255,255,.08); overflow:hidden}
+.bar > i{display:block; height:100%; background:linear-gradient(90deg, var(--sys), #9fdcff); border-radius:6px}
+.bar.gold > i{background:linear-gradient(90deg, #b8902c, var(--gold))}
+.bar.ok > i{background:linear-gradient(90deg, #4fae84, var(--ok))}
+.stat{display:grid; grid-template-columns:auto 1fr; gap:4px 14px; font-size:14px}
+.stat .k{color:var(--muted)}
+input[type=text],input[type=date],input[type=number],input[type=tel],textarea,select{
+  width:100%; background:rgba(5,12,34,.6); color:var(--ink); border:1px solid var(--line); border-radius:10px; padding:9px 11px; font:inherit}
+textarea{min-height:90px; resize:vertical}
+input:focus,textarea:focus,select:focus{outline:none; border-color:rgba(110,200,255,.6)}
+label.f{display:block; font-size:12.5px; color:var(--muted); margin:10px 0 4px}
+.gate{display:flex; gap:10px; align-items:flex-start; padding:10px 0; border-top:1px solid var(--line)}
+.gate:first-child{border-top:0}
+.gate .main{flex:1; min-width:0; cursor:pointer}
+.gate .title{font-weight:600; word-wrap:break-word}
+.gate .meta{display:flex; gap:5px; flex-wrap:wrap; margin-top:5px}
+.check{width:26px; height:26px; flex:none; border-radius:8px; border:1px solid rgba(110,200,255,.55); background:transparent; color:var(--sys); cursor:pointer; font-size:15px}
+.check:hover{background:var(--sys-soft)}
+.prompt{font-size:12.5px; color:var(--gold); margin-top:5px}
+nav.tabs{position:fixed; left:0; right:0; bottom:0; background:rgba(8,16,42,.94); border-top:1px solid var(--line); display:flex; justify-content:center; padding:8px 8px calc(8px + env(safe-area-inset-bottom)); backdrop-filter:blur(8px); z-index:20}
+nav.tabs .in{display:flex; gap:4px; width:100%; max-width:540px}
+nav.tabs button{flex:1; background:none; border:0; color:var(--muted); font:inherit; font-size:13px; padding:7px 0; border-radius:10px; cursor:pointer}
+nav.tabs button.active{color:var(--gold); background:rgba(217,180,74,.08)}
+nav.tabs button b{display:block; font-family:var(--head); font-weight:400; font-size:15px; letter-spacing:.04em}
+#toasts{position:fixed; top:12px; left:0; right:0; display:flex; flex-direction:column; align-items:center; gap:8px; z-index:60; pointer-events:none; padding:0 16px}
+#toasts .system{pointer-events:auto; max-width:508px; width:100%; margin:0; animation:pop .28s ease-out; cursor:pointer; background:linear-gradient(180deg,#1a3c90,#0e2364)}
+#toasts .system.goldt{border-color:rgba(217,180,74,.7); box-shadow:0 0 22px rgba(217,180,74,.3)}
+#toasts .system.goldt .line::before,#toasts .system.goldt .line::after{color:var(--gold)}
+@keyframes pop{from{opacity:0; transform:translateY(-8px) scale(.98)} to{opacity:1; transform:none}}
+.sheet-bg{position:fixed; inset:0; background:rgba(2,6,20,.6); z-index:40; display:flex; align-items:flex-end; justify-content:center}
+.sheet{width:100%; max-width:540px; max-height:88vh; overflow:auto; background:#0e1c48; border:1px solid var(--line); border-bottom:0; border-radius:18px 18px 0 0; padding:16px 16px calc(20px + env(safe-area-inset-bottom))}
+.sheet .grab{width:44px; height:4px; border-radius:4px; background:var(--line); margin:0 auto 12px}
+.seg{display:flex; gap:6px; flex-wrap:wrap}
+.seg button{border:1px solid var(--line); background:transparent; color:var(--muted); border-radius:999px; padding:5px 11px; font:inherit; font-size:13px; cursor:pointer}
+.seg button.sel{border-color:rgba(217,180,74,.65); color:#f3dc97; background:var(--gold-soft)}
+.mood{display:grid; grid-template-columns:repeat(5,1fr); gap:6px}
+.mood button{border:1px solid var(--line); background:rgba(255,255,255,.03); color:var(--ink); border-radius:12px; padding:10px 2px; font:inherit; font-size:12.5px; cursor:pointer}
+.mood button.sel{border-color:var(--sys); background:var(--sys-soft)}
+.mood button span{display:block; font-family:var(--head); font-size:18px; color:var(--sys)}
+.floors{display:flex; gap:4px; margin:8px 0}
+.floors i{flex:1; height:6px; border-radius:4px; background:rgba(255,255,255,.1)}
+.floors i.d{background:var(--gold)} .floors i.n{background:var(--sys)}
+.loot{position:relative; height:14px; border-radius:7px; background:rgba(255,255,255,.08); overflow:hidden; margin:6px 0}
+.loot i{position:absolute; left:0; top:0; bottom:0; background:linear-gradient(90deg,#b8902c,var(--gold))}
+.loot b{position:absolute; top:-2px; bottom:-2px; width:2px; background:#fff}
+.ripple{position:fixed; inset:0; pointer-events:none; z-index:55; background:radial-gradient(circle at 50% 50%, rgba(10,8,30,.0) 0%, rgba(10,8,30,.75) 60%); animation:rip 1.1s ease-out forwards}
+@keyframes rip{0%{opacity:0} 30%{opacity:1} 100%{opacity:0}}
+.motes{position:fixed; inset:0; pointer-events:none; z-index:0; overflow:hidden}
+.motes i{position:absolute; width:4px; height:4px; border-radius:50%; background:var(--gold); opacity:.6; animation:drift linear infinite}
+@keyframes drift{from{transform:translateY(105vh)} to{transform:translateY(-10vh)}}
+.border-camp{position:fixed; inset:6px; border:1.5px solid rgba(217,180,74,.45); border-radius:18px; pointer-events:none; z-index:1; box-shadow:inset 0 0 0 4px rgba(46,92,70,.35)}
+.fade{animation:fadeout .9s ease forwards}
+@keyframes fadeout{to{opacity:0; transform:translateY(6px); filter:hue-rotate(60deg)}}
+.chapter{font-family:var(--head); line-height:1.7; color:#dfe6fb}
+.footer-links{display:flex; justify-content:space-between; margin-top:26px}
+.footer-links button{background:none; border:0; color:var(--muted); font:inherit; font-size:13px; text-decoration:underline; cursor:pointer; padding:6px 0}
+table.imp{width:100%; border-collapse:collapse; font-size:13px}
+table.imp td,table.imp th{border-top:1px solid var(--line); padding:6px 4px; text-align:left; vertical-align:top}
+table.imp th{color:var(--muted); font-weight:500}
+.flag{color:#f3c97a; font-size:12px}
+@media (prefers-reduced-motion: reduce){ *{animation:none!important} }
+</style>
+</head>
+<body>
+<div id="motes" class="motes" hidden></div>
+<div id="camp" class="border-camp" hidden></div>
+<div class="wrap">
+  <header class="top">
+    <span class="brand">ARISE</span>
+    <span id="previewChip" class="chip sys" hidden>Preview: all on</span>
+    <span class="date" id="dateLabel"></span>
+    <button class="iconbtn" data-act="settings" aria-label="Settings">⚙</button>
+  </header>
+  <main id="view"></main>
+</div>
+<nav class="tabs"><div class="in">
+  <button data-act="tab" data-tab="today"><b>Today</b>Quest</button>
+  <button data-act="tab" data-tab="gates"><b>Gates</b>Tasks</button>
+  <button data-act="tab" data-tab="week"><b>Week</b>Review</button>
+  <button data-act="tab" data-tab="status"><b>Status</b>Paths</button>
+</div></nav>
+<div id="toasts"></div>
+<div id="sheet" class="sheet-bg" hidden></div>
+<script src="app.js"></script>
+</body>
+</html>
