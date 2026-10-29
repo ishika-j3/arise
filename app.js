@@ -91,8 +91,12 @@ function load(k, fresh) {
 }
 let st = load(KEY, freshState);
 let priv = load(PKEY, freshPriv);
-function save() {
+// touch = a real change by the player. Upkeep on opening the app passes false, so an old phone
+// never looks newer than the account copy and overwrites it.
+function save(touch = true) {
+  if (touch) st.updatedAt = new Date().toISOString();
   try { localStorage.setItem(KEY, JSON.stringify(st)); localStorage.setItem(PKEY, JSON.stringify(priv)); } catch (e) { /* storage blocked: app still works this session */ }
+  if (touch && typeof acctQueue === 'function') acctQueue();
 }
 
 /* ---------------- Dates ---------------- */
@@ -783,7 +787,7 @@ function sheetMind() {
     <div class="mood" style="margin-top:10px">${MOODS.map(([n, w]) => `<button class="${cur.s === n ? 'sel' : ''}" data-act="moodPick" data-n="${n}"><span>${n}</span>${w}</button>`).join('')}</div>
     <label class="f">One line, if you want</label><input type="text" id="mline" value="${esc(cur.line || '')}" placeholder="Optional">
     <label class="row small" style="margin-top:10px"><input type="checkbox" id="mcalm" ${cur.calm ? 'checked' : ''}> I used a calming tool today (breathing, a walk, Spiral Breaker)</label>
-    <div class="small muted" style="margin-top:8px">This stays on this phone. The line is deleted after 14 days. The 1 to 5 number is kept for 90 days so your own patterns can show.</div>
+    <div class="small muted" style="margin-top:8px">This stays on this phone, plus your encrypted account copy if you have one. The line is deleted after 14 days. The 1 to 5 number is kept for 90 days so your own patterns can show.</div>
     <div class="row" style="margin-top:14px"><button class="btn gold" data-act="moodSave">Save</button><button class="btn ghost" data-act="closeSheet">Cancel</button></div>`);
   el('sheet').dataset.mood = cur.s || '';
 }
@@ -914,9 +918,10 @@ function readSetup() {
 }
 function onboarding() {
   el('view').innerHTML = `<div class="system" style="margin-top:30px"><div class="line">You have been chosen as a Player. Do you accept?</div>
-    <p class="small" style="margin:12px 0 0">Everything you put in here stays on this phone. Nothing is sent anywhere. You can change all of it later in Settings.</p></div>
+    <p class="small" style="margin:12px 0 0">Everything you put in here stays on this phone. If you make an account, it is encrypted first, so only you can read it. You can change all of it later in Settings.</p></div>
     <div class="card">${setupFields()}</div>
-    <button class="btn gold" data-act="accept" style="width:100%;padding:12px">Accept</button>`;
+    <button class="btn gold" data-act="accept" style="width:100%;padding:12px">Accept</button>
+    <div class="card" style="text-align:center"><span class="small muted">Already have an account?</span> <button class="btn small" data-act="acctIn">Log in</button></div>`;
 }
 
 /* ---------------- Settings ---------------- */
@@ -925,6 +930,8 @@ function sheetSettings() {
     <div class="row" style="flex-wrap:nowrap"><input type="text" id="dqf_${id}" value="${esc(t.full)}"><input type="text" id="dqm_${id}" value="${esc(t.min)}" placeholder="Minimum"></div>`; };
   const ps = st.plannedSafe.map((r, i) => `<div class="spread small" style="padding:4px 0"><span>${nice(r.from)} to ${nice(r.to)}</span><button class="btn ghost small" data-act="psDel" data-i="${i}">Remove</button></div>`).join('');
   openSheet(`<h3>Settings</h3>
+    <h3 style="margin-top:6px">Account</h3><div id="acctBox">${typeof acctHtml === 'function' ? acctHtml() : ''}</div>
+    <h3 style="margin-top:18px">Your setup</h3>
     ${setupFields()}
     <h3 style="margin-top:18px">Daily Quest wording</h3><div class="small muted">Full version, then the minimum. Change it to fit your life.</div>
     ${['night', 'move', 'fuel'].map(dqRow).join('')}
@@ -960,7 +967,7 @@ const ACT = {
     st.onboarded = true; st.created = today(); st.lastBackup = today();
     save(); render(); sys('Player registered. Welcome, ' + (st.name || 'Player') + '.', 'gold'); sound('ring');
   },
-  lowOpen: () => openSheet(`<h3>What's making today hard?</h3><div class="small muted">Pick the closest one. Today's quest changes to fit it. This stays on this phone and is deleted after 14 days.</div>
+  lowOpen: () => openSheet(`<h3>What's making today hard?</h3><div class="small muted">Pick the closest one. Today's quest changes to fit it. Only you can see it, and it is deleted after 14 days.</div>
     <div class="row" style="margin-top:12px">${Object.entries(LOW).map(([k, L]) => `<button class="btn ${priv.low[today()] === k ? 'on' : ''}" data-act="lowPick" data-r="${k}">${esc(L.n)}</button>`).join('')}</div>
     <div class="row" style="margin-top:14px"><button class="btn ghost" data-act="closeSheet">Cancel</button></div>`),
   lowPick: d => {
@@ -1211,12 +1218,12 @@ function kindWindow() {
   let line = null;
   if (y && y.s <= 2) line = 'Hidden achievement: you opened the System on a hard day.';
   else if (st.flags.rested && Math.random() < .3) line = 'The System noticed you rested. It approves.';
-  if (line) { st.kindWeek = w; save(); setTimeout(() => sys(line, 'gold'), 900); }
+  if (line) { st.kindWeek = w; save(false); setTimeout(() => sys(line, 'gold'), 900); }
 }
 function boot() {
   if (st.onboarded) {
     if (st.safe.active && !st.safe.days.includes(today())) st.safe.days.push(today());
-    pruneMind(); wakeWaiting(); save();
+    pruneMind(); wakeWaiting(); save(false);
   }
   render();
   if (st.onboarded) kindWindow();

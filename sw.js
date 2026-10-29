@@ -1,7 +1,7 @@
 // Offline support. Network first, so new builds show up straight away; cache is the fallback.
 // Push notifications get added here in a later pass.
-const CACHE = 'arise-v4';
-const SHELL = ['./', './index.html', './app.js', './manifest.webmanifest', './icon.svg', './icon-192.png', './icon-512.png'];
+const CACHE = 'arise-v5';
+const SHELL = ['./', './index.html', './app.js', './account.js', './manifest.webmanifest', './icon.svg', './icon-192.png', './icon-512.png'];
 
 self.addEventListener('install', (e) => {
   e.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting()));

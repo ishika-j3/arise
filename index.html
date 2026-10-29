@@ -73,7 +73,7 @@ h3{font-family:var(--head); font-weight:700; font-size:15px; margin:0 0 8px; col
 .bar.ok > i{background:linear-gradient(90deg, #1f9c80, var(--ok))}
 .stat{display:grid; grid-template-columns:auto 1fr; gap:4px 14px; font-size:14px}
 .stat .k{color:var(--muted)}
-input[type=text],input[type=date],input[type=number],input[type=tel],textarea,select{
+input[type=text],input[type=password],input[type=date],input[type=number],input[type=tel],textarea,select{
   width:100%; background:#070810; color:var(--ink); border:1px solid var(--line); border-radius:var(--radius); padding:9px 11px; font:inherit; color-scheme:dark}
 input[type=radio],input[type=checkbox]{accent-color:var(--sys)}
 textarea{min-height:90px; resize:vertical}
@@ -155,5 +155,6 @@ details summary{cursor:pointer; color:var(--muted); font-size:13px}
 <div id="toasts"></div>
 <div id="sheet" class="sheet-bg" hidden></div>
 <script src="app.js"></script>
+<script src="account.js"></script>
 </body>
 </html>

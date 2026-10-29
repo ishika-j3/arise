@@ -8,14 +8,24 @@ Open the site in Chrome on Android, then tap the menu and choose **Install app**
 
 ## Where data lives
 
-Everything stays on the device. Nothing is sent anywhere.
+Without an account, everything stays on the device and nothing is sent anywhere.
 
-| Store | What | In the backup file? |
-|---|---|---|
-| `arise-state-v1` | Gates, quests, XP, trials, your setup | Yes |
-| `arise-private-v1` | Mind check lines and low-energy reasons (kept 14 days), the 1 to 5 mood number (kept 90 days, for patterns), cycle dates, birthday | Never |
+| Store | What | In the backup file? | In the account copy? |
+|---|---|---|---|
+| `arise-state-v1` | Gates, quests, XP, trials, your setup | Yes | Yes, encrypted |
+| `arise-private-v1` | Mind check lines and low-energy reasons (kept 14 days), the 1 to 5 mood number (kept 90 days, for patterns), cycle dates, birthday | Never | Yes, encrypted |
 
 The app asks the phone to keep its storage, and reminds you weekly to save a backup (Settings, Download backup).
+
+## Optional account (free)
+
+Settings, Account: **Create account** with an email and password, then **Log in** on any other phone to get everything back.
+
+- The password never leaves the phone as-is. Two keys are made from it on the phone: one to log in, one to encrypt the save (AES-GCM, 256-bit). The database (Supabase, free plan) stores only the encrypted blob, one row per player under row-level security, so nobody with database access can read it. See `supabase-setup.sql` and `account.js`.
+- No emails are sent, so there is nothing to rate-limit or pay for.
+- A forgotten password means the account copy can't be unlocked. Keep the backup file too.
+- Logging out clears the phone; everything stays in the account for next time.
+- The free Supabase project pauses after 7 days with no use by anyone. The app keeps working on the phone while paused, and syncs again once the project is resumed.
 
 ## Paste a list
 
