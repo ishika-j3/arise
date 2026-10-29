@@ -77,10 +77,14 @@ function freshState() {
     // setup, chosen by each player
     name: '', level: 'zero', seasonStart: '', pathNames: {}, hidden: [], hostName: '', dq: {}, support: false,
     plannedSafe: [], lastBackup: '', nudged: '',
+    // One small good thing a day: a mix of pleasant things and small "I did it" things (behavioural activation)
+    goodList: ['10 minutes in daylight', 'A song you love, properly listened to', 'Message someone you like', 'A shower and fresh clothes',
+      '10 pages of a book', 'Tidy one surface', 'Something tasty, eaten slowly', 'Step outside, even for 2 minutes'],
   };
 }
 function freshPriv() {
-  return { mind: {}, low: {}, cycle: { on: false, starts: [], len: 28, plen: 5 }, birthday: '', sound: true, preview: false, dateOverride: '' };
+  // moodLog keeps only the 1 to 5 number for 90 days, so patterns (activity, cycle) can show. Written lines go after 14.
+  return { mind: {}, moodLog: {}, low: {}, cycle: { on: false, hormonal: false, starts: [], len: 28, plen: 5 }, birthday: '', sound: true, preview: false, dateOverride: '' };
 }
 function load(k, fresh) {
   try { const v = JSON.parse(localStorage.getItem(k)); return v ? Object.assign(fresh(), v) : fresh(); } catch (e) { return fresh(); }
@@ -156,6 +160,30 @@ function cycleDay(k = today()) {
   else if (day > len - 5) ph = 'late';
   else ph = 'luteal';
   return { day, len, ph, next: addDays(last, len) };
+}
+function phasesOn() { return priv.cycle.on && !priv.cycle.hormonal; }   // hormonal contraception: no natural phases
+
+/* ---------------- Patterns from your own data ---------------- */
+const avg = a => a.reduce((x, y) => x + y, 0) / a.length;
+// Mood on days you did a thing vs days you didn't, over the last 28 days. Needs 3+ days on each side.
+function moodLink(did) {
+  const yes = [], no = [];
+  for (let i = 0; i < 28; i++) {
+    const k = addDays(today(), -i), m = priv.moodLog[k]; if (!m) continue;
+    (did(st.days[k] || {}) ? yes : no).push(m);
+  }
+  return yes.length >= 3 && no.length >= 3 ? { yes: avg(yes), no: avg(no), n: yes.length + no.length } : null;
+}
+// Do low days cluster in the premenstrual window (last 5 days of the cycle and period days 1 to 2)?
+function cyclePattern() {
+  if (!phasesOn() || priv.cycle.starts.length < 2) return null;
+  const pre = [], rest = [];
+  Object.keys(priv.moodLog).forEach(k => {
+    const c = cycleDay(k); if (!c || !c.ph) return;
+    (c.ph === 'late' || (c.ph === 'menstrual' && c.day <= 2) ? pre : rest).push(priv.moodLog[k]);
+  });
+  if (pre.length < 4 || rest.length < 8) return null;
+  return { pre: avg(pre), rest: avg(rest), lower: avg(rest) - avg(pre) >= 0.7 };
 }
 
 /* ---------------- XP and levels ---------------- */
@@ -255,8 +283,11 @@ function clearFloor(g, skip) {
   if (skip && g.raid) g.raid.skipped[i] = true;
   f.done = today(); g.touched = today();
   const bonus = inSeason() && (g.builtin === 'support' || (g.raid && (i === 2 || i === 3) && !skip));
-  award(g.raid && i === 6 ? SIZE_XP.C : 10, { bonus });
+  // An avoided gate pays its full XP for starting, because starting is the hard part.
+  const started = g.avoid && i === 0;
+  award(g.raid && i === 6 ? SIZE_XP.C : started ? SIZE_XP[g.size] : 10, { bonus: bonus || started });
   g.floorIdx++;
+  if (started && g.floorIdx < g.floors.length) { sys('You started. That was the hard part, and it has been paid in full.', 'gold'); sound('ring'); checkTitles(); return; }
   if (g.raid && g.floorIdx === 4) {
     const ok = !g.raid.skipped[2] && !g.raid.skipped[3];
     sys(ok ? 'Raid Assessment: viable. Break-even confirmed. Party assembled.' : 'Raid Assessment skipped for this one. The rule starts with the next event.', ok ? 'gold' : '');
@@ -266,7 +297,7 @@ function clearFloor(g, skip) {
   }
   if (g.floorIdx >= g.floors.length) {
     g.state = 'done'; g.done = today();
-    award(SIZE_XP[g.size]);
+    if (!g.avoid) award(SIZE_XP[g.size]);
     if (g.raid) {
       const r = g.raid, sold = Number(r.sold), price = Number(r.price), spent = Number(r.spent);
       const covered = sold > 0 && price > 0 && spent >= 0 && sold * price >= spent;
@@ -356,6 +387,9 @@ function pruneMind() {
   const cut = addDays(today(), -14);
   Object.keys(priv.mind).forEach(k => { if (k < cut) delete priv.mind[k]; });
   Object.keys(priv.low).forEach(k => { if (k < cut) delete priv.low[k]; });
+  Object.keys(priv.mind).forEach(k => { if (!priv.moodLog[k]) priv.moodLog[k] = priv.mind[k].s; });
+  const cut90 = addDays(today(), -90);
+  Object.keys(priv.moodLog).forEach(k => { if (k < cut90) delete priv.moodLog[k]; });
   priv.cycle.starts = priv.cycle.starts.sort().slice(-8);   // enough to average the last 6 cycles
 }
 
@@ -418,6 +452,9 @@ function cycleCard() {
   const c = cycleDay();
   if (!priv.cycle.starts.length) return `<div class="card"><div class="spread"><span class="small muted">Cycle: add the first day of your last period to see your phase.</span>
     <button class="btn small" data-act="settings">Add</button></div></div>`;
+  if (priv.cycle.hormonal) return `<div class="card"><div class="spread"><span class="chip" style="color:var(--era-accent)">${c ? 'Day ' + c.day + ' since your last bleed' : 'Cycle'}</span>
+    <button class="btn ghost small" data-act="periodStart">Bleed started today</button></div>
+    <p class="small muted" style="margin:8px 0 0">On hormonal contraception your hormones stay fairly level, so there are no phase tips. Use "Low energy today?" on hard days.</p></div>`;
   if (!c || !c.ph) return `<div class="card"><div class="spread"><span class="small">Your period is later than your usual cycle. Tap when it starts.</span>
     <button class="btn small" data-act="periodStart">Started today</button></div></div>`;
   const P = CYCLE[c.ph], soon = c.ph === 'late' || c.day >= c.len - 2;
@@ -455,7 +492,7 @@ function renderToday() {
   }
 
   if (missed(y) && !st.returnDone[t]) {
-    h += `<div class="system"><div class="line">Welcome back, Player. No penalty has been applied.</div>
+    h += `<div class="system"><div class="line">Welcome back, ${esc(st.name || 'Player')}. No penalty has been applied.</div>
       <p class="small" style="margin:8px 0">Return Quest, if you want it: drink a glass of water and open today's quest.</p>
       <div class="row"><button class="btn gold small" data-act="returnDo">Done</button><button class="btn ghost small" data-act="returnSkip">Not today</button></div></div>`;
   }
@@ -483,6 +520,12 @@ function renderToday() {
       <div class="acts">${acts}</div></div></div>`;
   });
   h += `</div>`;
+
+  h += r.good
+    ? `<div class="card"><div class="spread"><div><h3>One small good thing</h3><div class="small" style="color:#c9f2dc">✓ ${esc(r.good)}</div></div>
+      <button class="btn ghost small" data-act="goodUndo">Change</button></div></div>`
+    : `<div class="card"><h3>One small good thing</h3><div class="small muted">Pick one and do it. Mood often follows action, not the other way round.</div>
+      <div class="row" style="margin-top:8px">${st.goodList.map((x, i) => `<button class="btn small" data-act="goodPick" data-i="${i}">${esc(x)}</button>`).join('')}</div></div>`;
 
   h += `<div class="card"><div class="spread"><div><h3>Rest block</h3><div class="small muted">Rest earns XP here. It counts as much as work.</div></div>
     <button class="btn" data-act="rest">Log rest</button></div></div>`;
@@ -534,6 +577,7 @@ function gateRow(g) {
   if (g.back) meta += `<span class="chip gold">Check back</span>`;
   if (g.repeat) meta += `<span class="chip">Repeats ${g.repeat}</span>`;
   if (g.raid) meta += `<span class="chip gold">Raid${g.raid.grand ? ' (grandfathered)' : ''}</span>`;
+  else if (g.avoid && g.floorIdx === 0) meta += `<span class="chip gold">Just start: ${esc(g.floors[0].t)}</span>`;
   else if (g.floors) meta += `<span class="chip sys">Dungeon</span>`;
   let extra = '';
   if (g.floors && g.state !== 'done') {
@@ -625,11 +669,11 @@ function renderWeek() {
         <div class="row" style="margin-top:8px"><button class="btn gold small" data-act="fatigueYes" data-k="${nextKey}">Set next week 3 lower</button></div></div>`;
     }
     // Cycle look-ahead: if the PMS window or a period falls in the coming week, offer a lighter week.
-    const c = cycleDay();
+    const c = phasesOn() ? cycleDay() : null, pat = cyclePattern();
     if (c && c.ph && !(nw.adjust < 0)) {
       const ws = isSun ? nextKey : addDays(weekKey(t), 0), we = addDays(ws, 6), pms = addDays(c.next, -5);
       if ((pms <= we && c.next >= ws) || (c.next >= ws && c.next <= we)) {
-        h += `<div class="system" style="margin-top:10px"><div class="line">Your period is likely around ${nice(c.next)}. The days before it can feel heavier.</div>
+        h += `<div class="system" style="margin-top:10px"><div class="line">Your period is likely around ${nice(c.next)}. ${pat && pat.lower ? 'Your own mood checks show these days run lower for you.' : 'The days before it can feel heavier.'}</div>
           <div class="row" style="margin-top:8px"><button class="btn gold small" data-act="fatigueYes" data-k="${nextKey}">Plan a lighter week (3 lower)</button></div></div>`;
       }
     }
@@ -652,7 +696,7 @@ function renderWeek() {
   if (stale.length) {
     h += `<h2>3. Gates nobody has touched in 3 weeks</h2><div class="card">${stale.map(g => `<div class="gate"><div class="main"><div class="title">${esc(g.title)}</div>
       <div class="row" style="margin-top:6px"><button class="btn small" data-act="staleReal" data-id="${g.id}">Still real</button>
-      <button class="btn small" data-act="staleSeal" data-id="${g.id}">Seal it</button><button class="btn ghost small" data-act="staleDrop" data-id="${g.id}">Drop it</button></div></div></div>`).join('')}</div>`;
+      <button class="btn small" data-act="staleSeal" data-id="${g.id}">Seal it</button>${g.floors ? '' : `<button class="btn small" data-act="avoidStale" data-id="${g.id}">I've been avoiding it</button>`}<button class="btn ghost small" data-act="staleDrop" data-id="${g.id}">Drop it</button></div></div></div>`).join('')}</div>`;
   }
 
   const open = st.mirages.filter(m => m.status === 'open');
@@ -661,6 +705,17 @@ function renderWeek() {
   h += `<div class="card" style="margin-top:18px">${w.reviewed ? '<div class="gold">Review done for this week.</div>' : '<button class="btn gold" data-act="finishReview">Finish review</button>'}</div>`;
 
   if (st.flags.oneThing) h += `<div class="small muted">Last "one thing": ${esc(st.flags.oneThing)}</div>`;
+
+  // Your own evidence: action tends to come before motivation, and this shows whether it does for you.
+  const f = x => x.toFixed(1), links = [['moved', r => !!r.move], ['did a small good thing', r => !!r.good]]
+    .map(([t, fn]) => [t, moodLink(fn)]).filter(x => x[1]);
+  const cp = cyclePattern();
+  if (links.length || cp) {
+    h += `<h2>What your last weeks show</h2><div class="card">`;
+    h += links.map(([t, L]) => `<div class="small" style="padding:4px 0">On days you ${t}, your mood averaged <b>${f(L.yes)}</b>. On other days, <b>${f(L.no)}</b>.</div>`).join('');
+    if (cp) h += `<div class="small" style="padding:4px 0">${cp.lower ? `Your mood tends to dip before and at the start of your period (<b>${f(cp.pre)}</b> against <b>${f(cp.rest)}</b> on other days). It's a pattern, not a failing. The review will offer lighter weeks then.` : `Your mood doesn't dip much around your period (<b>${f(cp.pre)}</b> against <b>${f(cp.rest)}</b>).`}</div>`;
+    h += `<div class="small muted" style="margin-top:6px">From your mood checks only. A pattern, not proof.</div></div>`;
+  }
   if (st.hostName) h += `<h2>${esc(st.hostName)}</h2><div class="card"><div class="spread"><span class="small muted">Turn on the regular session once its first-session Dungeon is cleared.</span>
     <button class="btn small ${st.flags.wbActive ? 'on' : ''}" data-act="wbToggle">${st.flags.wbActive ? 'On' : 'Off'}</button></div></div>`;
   return h;
@@ -728,7 +783,7 @@ function sheetMind() {
     <div class="mood" style="margin-top:10px">${MOODS.map(([n, w]) => `<button class="${cur.s === n ? 'sel' : ''}" data-act="moodPick" data-n="${n}"><span>${n}</span>${w}</button>`).join('')}</div>
     <label class="f">One line, if you want</label><input type="text" id="mline" value="${esc(cur.line || '')}" placeholder="Optional">
     <label class="row small" style="margin-top:10px"><input type="checkbox" id="mcalm" ${cur.calm ? 'checked' : ''}> I used a calming tool today (breathing, a walk, Spiral Breaker)</label>
-    <div class="small muted" style="margin-top:8px">This stays on this phone and is deleted after 14 days.</div>
+    <div class="small muted" style="margin-top:8px">This stays on this phone. The line is deleted after 14 days. The 1 to 5 number is kept for 90 days so your own patterns can show.</div>
     <div class="row" style="margin-top:14px"><button class="btn gold" data-act="moodSave">Save</button><button class="btn ghost" data-act="closeSheet">Cancel</button></div>`);
   el('sheet').dataset.mood = cur.s || '';
 }
@@ -778,6 +833,7 @@ function sheetGate(id) {
     <div style="flex:1"><label class="f">Owner</label><input type="text" id="gowner" value="${esc(g.owner === 'me' ? '' : g.owner)}" placeholder="You"></div></div>
     ${floorsHtml}
     <div class="row" style="margin-top:16px"><button class="btn gold" data-act="gsave" data-id="${g.id}">Save</button>
+    ${g.state === 'open' && !g.floors ? `<button class="btn gold small" data-act="avoidOpen" data-id="${g.id}">I've been avoiding this</button>` : ''}
     ${g.state === 'open' && !g.floors && on('dungeons') ? `<button class="btn small" data-act="mkDungeon" data-id="${g.id}">Make it a Dungeon</button>` : ''}
     ${g.state === 'open' && !g.floors ? `<button class="btn small" data-act="mkRaid" data-id="${g.id}">Make it a Raid</button>` : ''}
     ${g.state === 'open' && on('waiting') ? `<button class="btn small" data-act="waitOpen" data-id="${g.id}">Waiting on someone</button>` : ''}
@@ -831,6 +887,7 @@ function setupFields() {
     <label class="row small" style="margin-top:10px"><input type="checkbox" id="suSupport" ${st.support ? 'checked' : ''}> Add a Dungeon for finding support, like a therapist or coach</label>
     <h3 style="margin-top:18px">Cycle (optional)</h3>
     <label class="row small"><input type="checkbox" id="cyOn" ${cy.on ? 'checked' : ''}> Show my cycle phase and adjust the plan around it</label>
+    <label class="row small" style="margin-top:6px"><input type="checkbox" id="cyHorm" ${cy.hormonal ? 'checked' : ''}> I use hormonal contraception (pill, patch, ring, implant, hormonal IUD). Phase tips switch off; period logging stays.</label>
     <div class="row" style="flex-wrap:nowrap"><div style="flex:1"><label class="f">First day of last period</label><input type="date" id="cyLast" value="${esc(last)}"></div>
     <div style="flex:1"><label class="f">Usual cycle (days)</label><input type="number" id="cyLen" min="20" max="45" value="${esc(cy.len)}"></div>
     <div style="flex:1"><label class="f">Period (days)</label><input type="number" id="cyPlen" min="2" max="10" value="${esc(cy.plen)}"></div></div>
@@ -850,7 +907,7 @@ function readSetup() {
   if (wantSupport && !st.gates.some(g => g.builtin === 'support')) newGate({ title: 'Support Dungeon', path: 'mind', size: 'C', builtin: 'support', floors: SUPPORT_FLOORS.map(t => ({ t, done: '' })) });
   if (!wantSupport) st.gates = st.gates.filter(g => g.builtin !== 'support' || g.floorIdx > 0);
   st.support = wantSupport;
-  const cy = priv.cycle; cy.on = el('cyOn').checked;
+  const cy = priv.cycle; cy.on = el('cyOn').checked; cy.hormonal = el('cyHorm').checked;
   cy.len = Math.min(45, Math.max(20, Number(val('cyLen')) || 28)); cy.plen = Math.min(10, Math.max(2, Number(val('cyPlen')) || 5));
   const last = val('cyLast'); if (last && !cy.starts.includes(last)) cy.starts.push(last);
   priv.birthday = val('suBday');
@@ -873,6 +930,7 @@ function sheetSettings() {
     ${['night', 'move', 'fuel'].map(dqRow).join('')}
     <h3 style="margin-top:18px">Safe Zone days ahead</h3><div class="small muted">Leave, travel or anything planned. Quests pause and those days don't count.</div>
     ${ps}<div class="row" style="flex-wrap:nowrap;margin-top:6px"><input type="date" id="psFrom"><input type="date" id="psTo"><button class="btn small" data-act="psAdd">Add</button></div>
+    <label class="f">Small good things to pick from (one per line)</label><textarea id="sGood">${esc(st.goodList.join('\n'))}</textarea>
     <label class="f">Reward chest items (one per line)</label><textarea id="sRewards">${esc(st.rewards.join('\n'))}</textarea>
     <label class="row" style="margin-top:12px"><input type="checkbox" id="sSound" ${priv.sound ? 'checked' : ''}> Sound (always off after 10 pm, except the close-the-gates hum)</label>
     <h3 style="margin-top:18px">Trying it out</h3>
@@ -919,6 +977,11 @@ const ACT = {
     if (quiet !== true) { save(); render(); }
   },
   showAll: () => { showAllToday = true; render(); },
+  goodPick: d => {
+    const r = dayRec(); if (!r.good) { r.xp.good = award(SIZE_XP.E); sound('chime'); }
+    r.good = st.goodList[Number(d.i)]; save(); render(); sys('A small good thing. The System noticed.');
+  },
+  goodUndo: () => { const r = dayRec(); unaward(r.xp.good || 0); delete r.good; delete r.xp.good; save(); render(); },
   periodStart: () => {
     const t = today(); if (!priv.cycle.starts.includes(t)) priv.cycle.starts.push(t);
     save(); render(); sys('Period start logged. The System will plan around it.');
@@ -940,10 +1003,10 @@ const ACT = {
     const s = Number(el('sheet').dataset.mood); if (!s) return sys('Pick how you feel first. Any answer is fine.');
     const calm = el('mcalm').checked, prev = priv.mind[today()];
     if (calm && !(prev && prev.calm)) st.calm++;
-    priv.mind[today()] = { s, line: val('mline'), calm };
+    priv.mind[today()] = { s, line: val('mline'), calm }; priv.moodLog[today()] = s;
     const r = dayRec(); if (!r.mind) { r.mind = 'full'; r.xp.mind = award(SIZE_XP.E, { bonus: inSeason() }); }
     pruneMind(); closeSheet(); checkTitles(); save(); render();
-    const c = cycleDay();
+    const c = phasesOn() ? cycleDay() : null;
     if (s <= 2 && c && c.ph === 'late') setTimeout(() => sys('This may be your cycle as well as your day. It usually lifts a few days into your period.'), 600);
   },
   closeSave: () => {
@@ -962,7 +1025,7 @@ const ACT = {
     if (d.id === 'friend' || d.id === 'joy') { w.holdAns = w.holdAns || {}; if (w.rituals.friend || w.rituals.joy) w.holdAns.l1 = 'yes'; }
     save(); render();
   },
-  returnDo: () => { st.returnDone[today()] = true; st.flags.returned = true; award(SIZE_XP.E); sys('Welcome back, Player. No penalty has been applied.'); checkTitles(); save(); render(); },
+  returnDo: () => { st.returnDone[today()] = true; st.flags.returned = true; award(SIZE_XP.E); sys('Welcome back, ' + (st.name || 'Player') + '. No penalty has been applied.'); checkTitles(); save(); render(); },
   returnSkip: () => { st.returnDone[today()] = true; save(); render(); },
   safeOn: () => { st.safe.active = true; if (!st.safe.days.includes(today())) st.safe.days.push(today()); save(); render(); sys('You are inside the borders. Nothing follows you in.'); },
   ready: () => { st.safe.active = false; st.safe.days = st.safe.days.filter(k => k !== today()); save(); render(); sys('Welcome back, ' + (st.name || 'Player') + '.'); },
@@ -1007,6 +1070,18 @@ const ACT = {
     el('subform').innerHTML = `<label class="f">What's floor 1?</label><div class="row" style="flex-wrap:nowrap"><input type="text" id="f1" placeholder="The first small step"><button class="btn small" data-act="mkDungeonGo" data-id="${g.id}">Go</button></div>`;
   },
   mkDungeonGo: d => { const g = findGate(d.id); const t = val('f1'); if (!t) return; saveGateFields(g); g.floors = [{ t, done: '' }]; g.floorIdx = 0; save(); render(); sheetGate(g.id); },
+  avoidOpen: d => {
+    el('subform').innerHTML = `<label class="f">What's a first step you could do in 2 minutes? Starting earns the full XP.</label>
+      <div class="row" style="flex-wrap:nowrap"><input type="text" id="avStep" placeholder="Open the email and read the first line"><button class="btn gold small" data-act="avoidGo" data-id="${d.id}">Set</button></div>
+      <div class="small muted" style="margin-top:6px">Avoiding something makes it feel bigger. A tiny start shrinks it back.</div>`;
+    setTimeout(() => el('avStep') && el('avStep').focus(), 0);
+  },
+  avoidGo: d => {
+    const g = findGate(d.id), t = val('avStep'); if (!t) return sys('Type a tiny first step. Smaller than feels useful is right.');
+    saveGateFields(g); g.avoid = true; g.floors = [{ t, done: '' }, { t: 'The rest of it, whenever you are ready', done: '' }]; g.floorIdx = 0; g.touched = today();
+    save(); closeSheet(); render(); sys('Gate shrunk to one step. Just start.');
+  },
+  avoidStale: d => { tab = 'gates'; render(); sheetGate(d.id); ACT.avoidOpen(d); },
   mkRaid: d => { const g = findGate(d.id); saveGateFields(g); makeRaid(g, false); save(); render(); sheetGate(g.id); sys('Raid registered. Break-even and an owner come before announcing.'); },
   waitOpen: d => {
     el('subform').innerHTML = `<label class="f">Check back on</label><div class="row" style="flex-wrap:nowrap"><input type="date" id="wdate" value="${addDays(today(), 3)}"><button class="btn small" data-act="waitGo" data-id="${d.id}">Set</button></div>`;
@@ -1075,6 +1150,7 @@ const ACT = {
       if (o.full || o.min) st.dq[id] = o; else delete st.dq[id];
     });
     st.rewards = val('sRewards').split('\n').map(x => x.trim()).filter(Boolean);
+    const good = val('sGood').split('\n').map(x => x.trim()).filter(Boolean); if (good.length) st.goodList = good;
     priv.sound = el('sSound').checked; priv.preview = el('sPreview').checked; priv.dateOverride = val('sDate');
   },
   settingsSave: () => { ACT.settingsRead(); save(); closeSheet(); boot(); sys('Settings saved.'); },
