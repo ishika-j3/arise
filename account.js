@@ -168,8 +168,8 @@ async function acctGo(mode) {
     if (!r.ok) {
       acct.busy = false;
       const t = JSON.stringify(r.data || {});
-      if (mode === 'signup' && /already|exists|registered/i.test(t)) return acctSheet('login', 'That email already has an account. Log in instead.');
-      if (mode === 'login' && r.status === 400) return say('Wrong email or password.');
+      if (mode === 'signup' && /already|exists|registered/i.test(t)) return acctSheet('login', 'That email already has an account, maybe from Inner Citadel, which shares logins. Log in with that password, or use another email.');
+      if (mode === 'login' && r.status === 400) return say('Wrong email or password. If this email is also your Inner Citadel login, use that password.');
       return say("Couldn't reach the account service. Check your connection and try again.");
     }
     if (!r.data.access_token) { acct.busy = false; return acctSheet('login', 'Account created. Log in now.'); }

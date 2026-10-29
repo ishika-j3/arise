@@ -1,6 +1,6 @@
 // Offline support. Network first, so new builds show up straight away; cache is the fallback.
 // Push notifications get added here in a later pass.
-const CACHE = 'arise-v7';
+const CACHE = 'arise-v8';
 const SHELL = ['./', './index.html', './app.js', './account.js', './manifest.webmanifest', './icon.svg', './icon-192.png', './icon-512.png'];
 
 self.addEventListener('install', (e) => {
@@ -20,6 +20,9 @@ self.addEventListener('fetch', (e) => {
   e.respondWith(
     fetch(e.request)
       .then((res) => {
+        // Only good responses replace the cache. If the site is gone or broken (404, 500),
+        // the last working copy keeps running, so data on the phone is never cut off.
+        if (!res.ok) return caches.match(e.request).then((hit) => hit || res);
         const copy = res.clone();
         caches.open(CACHE).then((c) => c.put(e.request, copy));
         return res;
