@@ -14,8 +14,6 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500&family=Rajdhani:wght@500;600;700&display=swap" rel="stylesheet">
 <style>
-/* Colour roles: blue = the System and actions, teal = done, violet = rewards (levels, ranks, Shadows),
-   gold = due or needs you. Areas keep one colour each, shown only as an edge line and an outlined tag. No red. */
 :root{
   --bg:#05060b; --panel:#0b0d16; --panel2:#0e1120;
   --sys:#4f8cff; --sys-line:#2a6df0; --sys-soft:rgba(79,140,255,.12); --sys-ink:#b9d0ff;
@@ -54,7 +52,7 @@ h3{font-family:var(--head); font-weight:700; font-size:15px; margin:0 0 8px; col
 .system .line::after{content:"]"; color:var(--sys); margin-left:3px}
 .btn{appearance:none; border:1px solid rgba(79,140,255,.45); background:var(--sys-soft); color:var(--sys-ink); border-radius:var(--radius); padding:8px 13px; font:inherit; font-size:13.5px; cursor:pointer}
 .btn:hover{background:rgba(79,140,255,.2)}
-.btn.gold{border-color:var(--sys-line); background:#1c4fd0; color:#fff; font-weight:500}  /* the main action on a screen */
+.btn.gold{border-color:var(--sys-line); background:#1c4fd0; color:#fff; font-weight:500}  
 .btn.gold:hover{background:#2a5fe6}
 .btn.ghost{border-color:var(--line); background:transparent; color:var(--muted)}
 .btn.small{padding:5px 10px; font-size:12.5px}
@@ -133,7 +131,6 @@ table.imp td,table.imp th{border-top:1px solid var(--line); padding:6px 4px; tex
 table.imp th{color:var(--muted); font-weight:500}
 .flag{color:var(--gold); font-size:12px}
 details summary{cursor:pointer; color:var(--muted); font-size:13px}
-/* Quest level-ups */
 .system.levelup{border-color:var(--vio); background:#0d0926; box-shadow:0 0 18px rgba(139,108,255,.28), inset 0 0 22px rgba(139,108,255,.08); animation:breathe 3.2s ease-in-out infinite}
 .system.levelup .line{color:var(--vio-ink)} .system.levelup .line::before,.system.levelup .line::after{color:var(--vio)}
 .system.levelup.calm{border-color:var(--sys-line); background:#070d1f; box-shadow:0 0 14px rgba(42,109,240,.16); animation:none}
@@ -154,7 +151,6 @@ details summary{cursor:pointer; color:var(--muted); font-size:13px}
 @keyframes fxin{from{opacity:0} to{opacity:1}}
 @keyframes rise{from{opacity:0; transform:translateY(8px)} to{opacity:1; transform:none}}
 @keyframes sweep{to{left:120%}}
-/* Small moments */
 .quest.just{animation:tick .55s ease-out}
 .quest.just .num{animation:numglow .9s ease-out}
 @keyframes tick{0%{background:rgba(63,224,181,.16)} 100%{background:transparent}}
