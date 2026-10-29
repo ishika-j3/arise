@@ -52,6 +52,19 @@ The cycle feature is optional and off by default. It shows the phase and adjusts
 
 Estimates only. Not for contraception and not medical advice.
 
+## Quest level-ups: how goals grow, and where they stop
+
+Move, Night and Fuel each climb a ladder. Steps are offered, never forced, and time stops rising at a cap.
+
+- Move: 10 → 15 → 20 → 30 minutes, then two strength days, then one harder 20 to 30 minute session a week. 30 minutes on 5 days is about 150 minutes a week, the low end of the WHO 2020 guideline (150 to 300 minutes of moderate activity, plus strength on 2 or more days). After that, only quality and variety change.
+- Night follows sleep-therapy (CBT-I) practice rather than ever-earlier bedtimes: wind-down, then a fixed wake time (sleep regularity matters for health beyond duration), then the phone out of reach, then "get up if not asleep after about 20 minutes".
+- Fuel only adds: protein, then fruit and vegetables, building towards five portions a day (WHO: at least 400 g). There is no calorie or weight language.
+- The minimum version never rises, so a bad day always has something that counts.
+- A step up needs the full version on 10 of the last 14 counted days and 21 days on the current step. Only one quest changes per 21 days, because habits take about 66 days to settle (Lally et al. 2010).
+- There are no offers on hard stretches: Safe Zone, a low-energy reason, mood averaging 2 or less over a week, or the premenstrual window. Low-energy days count as neutral.
+- "Not yet" waits 14 days; after two, the System stops asking (Settings can turn it back on). A lighter step is offered, with no penalty, when a quest goes quiet.
+- Before harder sessions the app adds a safety line: chest pain, feeling faint or a heart condition means check with a doctor first.
+
 ## Mind mechanics: what they are based on
 
 ARISE doesn't diagnose or treat anything. Its mechanics borrow from well-tested ideas:

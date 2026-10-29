@@ -29,8 +29,8 @@ const DAILY = [
 // Starting level sets the Move quest and the Body trials. Everyone can change the wording later.
 const LEVELS = {
   zero: { n: 'Starting from zero', d: 'Little or no exercise right now', move: ['10-minute walk or stretch', '2 minutes'] },
-  some: { n: 'Some activity', d: 'Walks or a workout now and then', move: ['20-minute walk or a beginner workout', '5 minutes'] },
-  active: { n: 'Already active', d: 'Exercise most weeks', move: ['30 minutes of training or a brisk walk', 'A 10-minute walk'] },
+  some: { n: 'Some activity', d: 'Walks or a workout now and then', move: ['20-minute brisk walk', '5 minutes'] },
+  active: { n: 'Already active', d: 'Exercise most weeks', move: ['30-minute brisk walk, or 20 minutes of strength or yoga', '10 minutes'] },
 };
 // Low-energy reasons. Each one changes today's plan in a specific way, not just "do less".
 const LOW = {
@@ -77,6 +77,7 @@ function freshState() {
     // setup, chosen by each player
     name: '', level: 'zero', seasonStart: '', pathNames: {}, hidden: [], hostName: '', dq: {}, support: false,
     plannedSafe: [], lastBackup: '', nudged: '',
+    tiers: {}, tierSince: {}, tierSnooze: {}, tierDeclined: {}, tierLast: '', mastery: {},
     // One small good thing a day: a mix of pleasant things and small "I did it" things (behavioural activation)
     goodList: ['10 minutes in daylight', 'A song you love, properly listened to', 'Message someone you like', 'A shower and fresh clothes',
       '10 pages of a book', 'Tidy one surface', 'Something tasty, eaten slowly', 'Step outside, even for 2 minutes'],
@@ -140,8 +141,70 @@ function pathName(p) { return st.pathNames[p] || PATHS[p].n; }
 function paths() { return Object.keys(PATHS).filter(p => !st.hidden.includes(p)); }
 function dq(q) {
   const o = st.dq[q.id] || {};
-  const lv = q.id === 'move' ? LEVELS[st.level] || LEVELS.zero : null;
-  return { full: o.full || (lv ? lv.move[0] : q.full), min: o.min || (lv ? lv.move[1] : q.min) };
+  const base = LADDERS[q.id] ? stepText(q.id, tierOf(q.id)) : [q.full, q.min];
+  return { full: o.full || base[0], min: o.min || base[1] };
+}
+
+/* ---------------- Quest level-ups ----------------
+   Each daily quest climbs a ladder, and time stops rising at a cap: Move tops out at 30 minutes, about
+   150 minutes a week (WHO 2020: 150 to 300 minutes of moderate activity, plus strength on 2 or more days).
+   After the cap, steps add quality or variety, never more time. The 2-minute style minimum never rises,
+   so a bad day always has a version that counts.
+   Rules (from a review against habit, sleep and nutrition evidence):
+   - Step up only ever offered, never forced: full version on 10 of the last 14 counted days, 21+ days on
+     the current step (habits take about 66 days to settle, Lally 2010), and only one ladder changes per 21 days.
+   - No offers on hard days: Safe Zone, a low-energy reason today, mood averaging 2 or less over 7 days, or the
+     premenstrual window. Days with a low-energy reason count as neutral, not misses.
+   - "Not yet" snoozes for 14 days; after two, that ladder stops asking until Settings turns offers back on.
+   - Step down offered, with no penalty, when the full version was done on 2 or fewer of the last 7 counted days.
+   - Mind check and Close the gates never level up: they are tools, not training. */
+const LADDERS = {
+  move: { start: { zero: 0, some: 2, active: 3 }, min: '2 minutes of moving, any kind', steps: [
+    '10-minute walk or stretch',
+    '15-minute walk',
+    '20-minute brisk walk',
+    '30-minute brisk walk, or 20 minutes of strength or yoga',
+    '30 minutes. On two days a week, make it strength training',
+    '30 minutes, two strength days, and once a week swap a walk for a 20 to 30 minute harder session (intervals or a class)',
+  ], vigorous: 5 },
+  night: { start: {}, min: 'Wind-down started, even 5 minutes', steps: [
+    'Wind-down started by your bedtime: phone down, lights low. Pick a bedtime that gives you 7 to 9 hours',
+    'Same wake time every day, within 30 minutes, weekends too, plus your wind-down',
+    'Wake time steady, wind-down, and the phone out of reach at night',
+    'All of that, and if you are not asleep after about 20 minutes, get up and do something calm until sleepy',
+  ] },
+  fuel: { start: {}, min: 'A meal and a glass of water', steps: [
+    'One proper meal with protein, and a water bottle',
+    'Protein at two meals or snacks, and your water bottle',
+    'Protein at two meals or snacks, plus fruit or vegetables at two of them',
+    'Protein at each meal or snack, and five portions of fruit or vegetables across the day',
+  ] },
+};
+function tierStart(id) { return (LADDERS[id].start[st.level] || 0); }
+function tierOf(id) { const t = st.tiers[id]; return t == null ? tierStart(id) : t; }
+function stepText(id, t) { return [LADDERS[id].steps[t], LADDERS[id].min]; }
+// Days that count: since joining, not Safe Zone, and not a day with a low-energy reason (those are neutral).
+function countedDays(n) { const out = []; for (let i = 1; i <= n; i++) { const k = addDays(today(), -i); if (!st.created || k < st.created) break; if (!isSafe(k) && !priv.low[k]) out.push(k); } return out; }
+function hardStretch() {
+  if (safeNow() || priv.low[today()]) return true;
+  const m = []; for (let i = 0; i < 7; i++) { const v = priv.moodLog[addDays(today(), -i)]; if (v) m.push(v); }
+  if (m.length >= 3 && m.reduce((a, b) => a + b, 0) / m.length <= 2) return true;
+  const c = phasesOn() ? cycleDay() : null;
+  return !!(c && c.ph === 'late');
+}
+function levelOffer() {
+  if (hardStretch()) return null;                                   // never ask for more on a hard stretch
+  const recent = st.tierLast && daysBetween(st.tierLast, today()) < 21;
+  for (const id of Object.keys(LADDERS)) {
+    const L = LADDERS[id], t = tierOf(id), since = st.tierSince[id] || st.created, snooze = st.tierSnooze[id] || '';
+    const d14 = countedDays(14), full14 = d14.filter(k => st.days[k] && st.days[k][id] === 'full').length;
+    const d7 = countedDays(7), full7 = d7.filter(k => st.days[k] && st.days[k][id] === 'full').length;
+    if (t > 0 && d7.length >= 5 && full7 <= 2 && daysBetween(since, today()) >= 7 && snooze <= today()) return { id, dir: 'down', from: t, to: t - 1 };
+    if (recent || snooze > today() || (st.tierDeclined[id] || 0) >= 2) continue;
+    if (t < L.steps.length - 1 && d14.length >= 12 && full14 >= 10 && daysBetween(since, today()) >= 21) return { id, dir: 'up', from: t, to: t + 1 };
+    if (t === L.steps.length - 1 && full14 >= 10 && !st.mastery[id]) return { id, dir: 'top', from: t, to: t };
+  }
+  return null;
 }
 
 /* ---------------- Cycle (optional, private) ---------------- */
@@ -323,6 +386,8 @@ const TRIALS = {
     C: { zero: [{ t: '5K walk without stopping' }],
          some: [{ t: '5K in under 45 minutes' }, { t: '10 full push-ups (knees are fine to start)' }],
          active: [{ t: 'Hunter Assessment improved on 3 of 5 tests' }] },
+    B: [{ t: 'Move quest at the 30-minute step, done in full on 10 of 14 days', a: () => [tierOf('move') >= 3 ? cnt14(k => st.days[k] && st.days[k].move === 'full') : 0, 10] },
+        { t: 'Hunter Assessment improved on 3 of 5 tests since your last one' }],
   },
   mind: {
     E: [{ t: 'Mind check on 10 of 14 days', a: () => [cnt14(k => !!priv.mind[k]), 10] },
@@ -331,11 +396,13 @@ const TRIALS = {
         { t: 'Let go of 3 Mirages', a: () => [Math.min(st.mirages.filter(m => m.status === 'letgo').length, 3), 3] }],
     C: [{ t: 'Support Dungeon floors 1 to 3 cleared', a: () => { const g = st.gates.find(x => x.builtin === 'support'); return [g ? Math.min(g.floorIdx, 3) : 0, 3]; } },
         { t: 'Early-warning list written: 3 signs a low patch is starting' }],
+    B: [{ t: 'Used your early-warning list once when a low patch started' }, { t: 'Let go of 10 Mirages', a: () => [Math.min(st.mirages.filter(m => m.status === 'letgo').length, 10), 10] }],
   },
   work: {
     E: [{ t: 'Held the line 3 weeks out of 4', a: () => [weeksHeld('work'), 3] }],
     D: [{ t: 'Every open work Gate has a date or a Waiting check-back, 2 weeks running' }, { t: 'One feedback conversation asked for' }],
     C: [{ t: 'Next-step Dungeon cleared up to "two conversations had"' }, { t: 'One week where work stayed inside the hours you set' }],
+    B: [{ t: 'Held the line 8 weeks out of 10' }, { t: 'Renegotiated one thing before it broke your hours, not after' }],
   },
   guild: {
     E: [{ t: 'Guild check-in 3 weeks out of 4', a: () => [weeksRitual('guild'), 3] },
@@ -344,12 +411,15 @@ const TRIALS = {
         { t: '5 handed-off Gates finished by someone else', a: () => [Math.min(st.flags.commanded || 0, 5), 5] }],
     C: [{ t: '3 Raids in a row with numbers shown first', a: () => [Math.min(cleanRaids(), 3), 3] },
         { t: 'First session of your hosted circle run' }, { t: 'One role fully handed over' }],
+    B: [{ t: 'One Raid run end to end by someone else', a: () => [st.gates.some(g => g.raid && g.state === 'done' && g.owner && g.owner !== 'me') ? 1 : 0, 1] },
+        { t: 'A full week off while the guild kept running' }],
   },
   life: {
     E: [{ t: 'A friend or family contact 3 weeks out of 4', a: () => [weeksRitual('friend'), 3] },
         { t: 'One creative or reading block each week (4 weeks)', a: () => [weeksRitual('joy'), 4] }],
     D: [{ t: 'One plan with friends where you just turn up, not organise' }, { t: 'One creative session as a participant' }],
     C: [{ t: 'A friend plan you just turned up to, 4 weeks in a row' }, { t: 'One book finished' }],
+    B: [{ t: 'A day out or a trip planned just for you' }, { t: 'One hobby kept up for 8 weeks', a: () => [Math.min(lastWeeks(8).filter(w => w && w.rituals.joy).length, 8), 8] }],
   },
 };
 function trialItems(p) {
@@ -439,7 +509,7 @@ function closeSheet() { el('sheet').hidden = true; el('sheet').innerHTML = ''; }
 function ripple() { const r = document.createElement('div'); r.className = 'ripple'; document.body.appendChild(r); setTimeout(() => r.remove(), 1200); }
 function val(id) { const x = el(id); return x ? x.value.trim() : ''; }
 
-let tab = 'today', showLate = false, mirageOpenNow = false, showAllToday = false;
+let tab = 'today', showLate = false, mirageOpenNow = false, showAllToday = false, justTick = '', clearingId = '';
 
 /* ---------------- Render: Today ---------------- */
 function morningLine() {
@@ -475,6 +545,27 @@ function lowCard() {
     <div class="small" style="margin-top:6px">Each item below shows today's version. Doing it counts in full.</div>
     <div class="row" style="margin-top:8px"><button class="btn ghost small" data-act="lowOpen">Change</button><button class="btn ghost small" data-act="lowClear">I'm fine now</button></div></div>`;
 }
+function levelCard() {
+  const o = levelOffer(); if (!o) return '';
+  const q = DAILY.find(x => x.id === o.id), L = LADDERS[o.id], n = L.steps.length;
+  if (o.dir === 'top') return `<div class="system levelup"><div class="line">${esc(q.t)} has reached its top step.</div>
+    <div class="small" style="margin-top:6px">No more time gets added from here. Holding it is the goal now, and it counts towards a Shadow.</div>
+    <div class="row" style="margin-top:8px"><button class="btn gold small" data-act="tierTop" data-id="${o.id}">Understood</button></div></div>`;
+  const up = o.dir === 'up';
+  const care = up && o.id === 'move' && o.to >= 4 ? `<div class="small gold" style="margin-top:6px">${o.to >= LADDERS.move.vigorous ? 'Before harder sessions: if you get chest pain, feel faint, or have a heart condition, check with a doctor first. A fast heartbeat while you push is expected, not danger.' : 'New to strength? Start light, with bodyweight or small weights, and learn the moves before adding load.'}</div>` : '';
+  return `<div class="system levelup ${up ? '' : 'calm'}"><div class="line">${up ? 'Quest upgrade available' : 'A lighter version for now?'}</div>
+    <div class="small muted" style="margin-top:4px">${esc(q.t)} · step ${o.from + 1} → ${o.to + 1} of ${n}</div>
+    <div class="ladder"><span class="was">${esc(L.steps[o.from])}</span><span class="arrow">↓</span><span class="now">${esc(L.steps[o.to])}</span></div>
+    <div class="small" style="margin-top:4px">${up ? 'You did the full version on 10 of the last 14 days. Ready for the next step? The minimum stays the same.' : 'This quest has been quiet this week. A lighter version keeps it alive. No penalty, and the next step will come back when you are ready.'}</div>${care}
+    <div class="row" style="margin-top:10px"><button class="btn gold small" data-act="tierYes" data-id="${o.id}" data-to="${o.to}">${up ? 'Accept' : 'Step back'}</button>
+    <button class="btn ghost small" data-act="tierNo" data-id="${o.id}" data-dir="${o.dir}">${up ? 'Not yet' : 'Keep this step'}</button></div></div>`;
+}
+function upgradeFx(title, from, to) {
+  const f = document.createElement('div'); f.className = 'upfx';
+  f.innerHTML = `<div class="in"><div class="tag">[ SYSTEM ]</div><div class="big">QUEST UPGRADED</div><div class="q">${esc(title)}</div>
+    <div class="was">${esc(from)}</div><div class="now">${esc(to)}</div><div class="small muted">Tap to continue</div></div>`;
+  f.onclick = () => f.remove(); document.body.appendChild(f); setTimeout(() => f.remove(), 4200);
+}
 function backupCard() {
   const t = today(), since = st.lastBackup || st.created;
   if (!since || daysBetween(since, t) < 7 || st.nudged === weekKey(t)) return '';
@@ -505,7 +596,7 @@ function renderToday() {
       <button class="btn" data-act="safeOn">Enter the Safe Zone</button></div>`;
   }
 
-  h += backupCard() + cycleCard() + lowCard();
+  h += backupCard() + cycleCard() + lowCard() + levelCard();
   const su = shownUp();
   h += `<div class="card"><div class="spread"><h3>Daily Quest</h3><span class="chip">Shown up: ${su.n} of the last ${su.d || 0} days</span></div>`;
   DAILY.forEach((q, i) => {
@@ -519,7 +610,7 @@ function renderToday() {
       acts = `<button class="btn small ${v === 'full' ? 'on' : ''}" data-act="daily" data-id="${q.id}" data-m="full">Done</button>
         <button class="btn small ${v === 'min' ? 'on' : ''}" data-act="daily" data-id="${q.id}" data-m="min">Minimum</button>`;
     }
-    h += `<div class="quest ${v ? 'done' : ''}"><div class="num">${i + 1}</div><div class="body">
+    h += `<div class="quest ${v ? 'done' : ''} ${justTick === q.id ? 'just' : ''}"><div class="num">${i + 1}</div><div class="body">
       <div class="t">${esc(q.t)} ${label}</div><div class="d">${tip ? `<span style="color:var(--sys)">Today: ${esc(tip)}</span>` : `${esc(txt.full)} <span class="muted">(minimum: ${esc(txt.min)})</span>`}</div>
       <div class="acts">${acts}</div></div></div>`;
   });
@@ -926,7 +1017,7 @@ function onboarding() {
 
 /* ---------------- Settings ---------------- */
 function sheetSettings() {
-  const q = id => DAILY.find(x => x.id === id), dqRow = id => { const t = dq(q(id)); return `<label class="f">${esc(q(id).t)}</label>
+  const q = id => DAILY.find(x => x.id === id), dqRow = id => { const t = dq(q(id)); return `<label class="f">${esc(q(id).t)} · step ${tierOf(id) + 1} of ${LADDERS[id].steps.length}</label>
     <div class="row" style="flex-wrap:nowrap"><input type="text" id="dqf_${id}" value="${esc(t.full)}"><input type="text" id="dqm_${id}" value="${esc(t.min)}" placeholder="Minimum"></div>`; };
   const ps = st.plannedSafe.map((r, i) => `<div class="spread small" style="padding:4px 0"><span>${nice(r.from)} to ${nice(r.to)}</span><button class="btn ghost small" data-act="psDel" data-i="${i}">Remove</button></div>`).join('');
   openSheet(`<h3>Settings</h3>
@@ -935,6 +1026,7 @@ function sheetSettings() {
     ${setupFields()}
     <h3 style="margin-top:18px">Daily Quest wording</h3><div class="small muted">Full version, then the minimum. Change it to fit your life.</div>
     ${['night', 'move', 'fuel'].map(dqRow).join('')}
+    <div class="row" style="margin-top:8px"><button class="btn ghost small" data-act="tierReset">Offer quest upgrades again</button></div>
     <h3 style="margin-top:18px">Safe Zone days ahead</h3><div class="small muted">Leave, travel or anything planned. Quests pause and those days don't count.</div>
     ${ps}<div class="row" style="flex-wrap:nowrap;margin-top:6px"><input type="date" id="psFrom"><input type="date" id="psTo"><button class="btn small" data-act="psAdd">Add</button></div>
     <label class="f">Small good things to pick from (one per line)</label><textarea id="sGood">${esc(st.goodList.join('\n'))}</textarea>
@@ -984,6 +1076,20 @@ const ACT = {
     if (quiet !== true) { save(); render(); }
   },
   showAll: () => { showAllToday = true; render(); },
+  tierYes: d => {
+    const id = d.id, to = Number(d.to), from = tierOf(id), q = DAILY.find(x => x.id === id);
+    st.tiers[id] = to; st.tierSince[id] = today(); delete st.dq[id];
+    if (to > from) { st.tierLast = today(); st.tierDeclined[id] = 0; award(25); upgradeFx(q.t, LADDERS[id].steps[from], LADDERS[id].steps[to]); sound('ring'); }
+    else sys('Lighter version set. It still counts in full.');
+    save(); render();
+  },
+  tierNo: d => {
+    st.tierSnooze[d.id] = addDays(today(), 14);
+    if (d.dir === 'up') st.tierDeclined[d.id] = (st.tierDeclined[d.id] || 0) + 1;
+    save(); render(); sys((st.tierDeclined[d.id] || 0) >= 2 ? 'Understood. The System will stop asking about this one. Settings can turn it back on.' : 'Understood. The System will ask again in two weeks.');
+  },
+  tierTop: d => { st.mastery[d.id] = today(); save(); render(); sys('Top step reached. Hold it, and it can become a Shadow.', 'gold'); },
+  tierReset: () => { st.tierDeclined = {}; st.tierSnooze = {}; save(); sys('Quest upgrades will be offered again.'); },
   goodPick: d => {
     const r = dayRec(); if (!r.good) { r.xp.good = award(SIZE_XP.E); sound('chime'); }
     r.good = st.goodList[Number(d.i)]; save(); render(); sys('A small good thing. The System noticed.');
@@ -1002,8 +1108,8 @@ const ACT = {
   daily: d => {
     const r = dayRec(), q = DAILY.find(x => x.id === d.id);
     if (r[d.id] === d.m) { unaward(r.xp[d.id] || 0); delete r[d.id]; delete r.xp[d.id]; }
-    else { if (!r[d.id]) { r.xp[d.id] = award(SIZE_XP.E, { bonus: q.main && inSeason() }); sound('chime'); } r[d.id] = d.m; }
-    checkTitles(); save(); render();
+    else { if (!r[d.id]) { r.xp[d.id] = award(SIZE_XP.E, { bonus: q.main && inSeason() }); sound('chime'); justTick = d.id; } r[d.id] = d.m; }
+    checkTitles(); save(); render(); justTick = '';
   },
   moodPick: (d, b) => { el('sheet').dataset.mood = d.n; b.parentNode.querySelectorAll('button').forEach(x => x.classList.toggle('sel', x === b)); },
   moodSave: () => {
@@ -1063,7 +1169,13 @@ const ACT = {
     });
     pendingImport = []; closeSheet(); save(); render(); sys(n + ' gates registered. They will wait for you.');
   },
-  clear: d => { const g = findGate(d.id); if (g) { clearGate(g); g.back = false; save(); render(); } },
+  clear: (d, b) => {
+    const g = findGate(d.id); if (!g || g.state !== 'open' || clearingId === g.id) return;   // a double tap can't clear it twice
+    clearingId = g.id;
+    const row = b && b.closest('.gate'), lastFloor = !g.floors || g.floorIdx >= g.floors.length - 1;
+    if (row && lastFloor) row.classList.add('clearing');   // the cleared gate slides away before the list redraws
+    setTimeout(() => { clearingId = ''; clearGate(g); g.back = false; save(); render(); }, row && lastFloor ? 420 : 0);
+  },
   gate: d => sheetGate(d.id),
   sortTo: d => { const g = findGate(d.id); g.path = d.p; g.night = false; g.touched = today(); save(); render(); },
   gset: d => { const g = findGate(d.id); g[d.f] = d.v; g.touched = today(); saveGateFields(g); save(); sheetGate(g.id); },
@@ -1150,8 +1262,7 @@ const ACT = {
   settingsRead: () => {
     readSetup();
     ['night', 'move', 'fuel'].forEach(id => {
-      const q = DAILY.find(x => x.id === id), base = { full: q.full, min: q.min };
-      if (id === 'move') { const L = LEVELS[st.level] || LEVELS.zero; base.full = L.move[0]; base.min = L.move[1]; }
+      const step = stepText(id, tierOf(id)), base = { full: step[0], min: step[1] };
       const f = val('dqf_' + id), m = val('dqm_' + id), o = {};
       if (f && f !== base.full) o.full = f; if (m && m !== base.min) o.min = m;
       if (o.full || o.min) st.dq[id] = o; else delete st.dq[id];
@@ -1166,7 +1277,7 @@ const ACT = {
     const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'arise-backup-' + today() + '.json'; a.click();
     st.lastBackup = today(); save(); render();
   },
-  wipe: () => { if (!confirm('Delete everything in this browser and start over?')) return; localStorage.removeItem(KEY); localStorage.removeItem(PKEY); st = freshState(); priv = freshPriv(); closeSheet(); boot(); },
+  wipe: () => { if (!confirm('Delete everything on this phone and start over? If you are logged in, you will be logged out too. Your account copy stays.')) return; if (typeof acctForget === 'function') acctForget(); localStorage.removeItem(KEY); localStorage.removeItem(PKEY); st = freshState(); priv = freshPriv(); closeSheet(); boot(); },
 };
 function saveGateFields(g) {
   if (!g) return;

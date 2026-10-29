@@ -12,7 +12,7 @@ const SB_URL = 'https://biskpdjpgmcsmlvakozc.supabase.co';
 const SB_KEY = 'sb_publishable_cpTyNtVTx1zmvUrSLTo_vA_mabUjJKn';   // a public key by design; row-level security does the protecting
 const SESSION_KEY = 'arise-session', OWNER_KEY = 'arise-owner', KEYDB = 'arise-keys';
 const DEVICE_ONLY = ['preview', 'dateOverride', 'sound'];        // settings that belong to this phone, not the account
-const acct = { session: null, key: null, salt: null, status: 'off', last: 0, busy: false, pushing: false, again: false };
+const acct = { session: null, key: null, salt: null, status: 'off', last: 0, busy: false, pushing: false, again: false, pulled: false };
 
 const te = new TextEncoder(), td = new TextDecoder();
 const b64 = buf => btoa(String.fromCharCode(...new Uint8Array(buf)));
@@ -74,7 +74,8 @@ async function rest(method, query, body, extra) {
 function privForSync() { const p = Object.assign({}, priv); DEVICE_ONLY.forEach(k => delete p[k]); return p; }
 function setStatus(s) { acct.status = s; if (s === 'ok') acct.last = Date.now(); acctRefresh(); }
 async function acctPush() {
-  if (!acct.session || !acct.key) return;
+  // Never upload before this session has pulled the account copy: a stale phone must not overwrite a newer one.
+  if (!acct.session || !acct.key || !acct.pulled) return;
   if (acct.pushing) { acct.again = true; return; }
   acct.pushing = true; acct.again = false; setStatus('syncing');
   try {
@@ -87,33 +88,53 @@ async function acctPush() {
 }
 let pushTimer = null;
 function acctQueue() { if (!acct.session || !acct.key) return; clearTimeout(pushTimer); pushTimer = setTimeout(acctPush, 2500); }
-document.addEventListener('visibilitychange', () => { if (document.hidden && pushTimer) { clearTimeout(pushTimer); acctPush(); } });
-window.addEventListener('online', () => { if (acct.status === 'offline') acctPush(); });
+// Coming back to the app or back online: pull first, then push only if this phone is newer.
+async function resync() { if (!acct.session || !acct.key) return; try { await openVault(null); } catch (e) { setStatus(String(e && e.message) === 'signed-out' ? 'signedout' : 'offline'); } }
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) { if (pushTimer && acct.pulled) { clearTimeout(pushTimer); acctPush(); } }
+  else resync();
+});
+window.addEventListener('online', resync);
 
-// Newest copy wins. A phone that isn't set up yet always takes the account's copy.
+function forgetLogin() {
+  clearTimeout(pushTimer);
+  acct.session = null; acct.key = null; acct.salt = null; acct.pulled = false;
+  ls.del(SESSION_KEY); ls.del(OWNER_KEY); return keyStore.clear();
+}
+// Used by "Start over" in Settings: forget the login so an empty phone can never overwrite the account.
+function acctForget() { forgetLogin(); setStatus('off'); }
+
+// Newest copy wins. A phone that isn't set up yet, or has never been linked to this account, takes the account's copy.
 async function openVault(password) {
   const rows = await rest('GET', '?select=state,updated_at&user_id=eq.' + acct.session.user_id);
   const row = rows && rows[0];
-  const owner = ls.get(OWNER_KEY);
-  if (owner && owner !== acct.session.user_id) { st = freshState(); priv = Object.assign(freshPriv(), { preview: priv.preview, sound: priv.sound }); }   // another player's data is never merged in
+  const owner = ls.get(OWNER_KEY), mine = owner === acct.session.user_id;
   if (row && row.state && row.state.data) {
-    acct.salt = unb64(row.state.salt);
-    if (password) acct.key = await vaultKey(password, acct.salt);
-    let remote; try { remote = await unseal(row.state); } catch (e) { throw new Error('cant-decrypt'); }
+    const salt = unb64(row.state.salt);
+    const key = password ? await vaultKey(password, salt) : acct.key;
+    let remote;
+    try { const prev = acct.key; acct.key = key; remote = await unseal(row.state); acct.key = prev; }
+    catch (e) { await forgetLogin(); setStatus('off'); throw new Error('cant-decrypt'); }
+    acct.key = key; acct.salt = salt;
+    if (owner && !mine) { st = freshState(); priv = Object.assign(freshPriv(), { preview: priv.preview, sound: priv.sound }); }   // another player's data is never merged in
     const rt = new Date(remote.st.updatedAt || 0), lt = new Date(st.updatedAt || 0);
-    if (!st.onboarded || rt > lt) {
+    acct.pulled = true;
+    if (!mine || !st.onboarded || rt > lt) {
       const keep = {}; DEVICE_ONLY.forEach(k => { keep[k] = priv[k]; });
       st = Object.assign(freshState(), remote.st); priv = Object.assign(freshPriv(), remote.priv || {}, keep);
       save(false); render(); if (st.onboarded) sys('Progress restored from your account.');
-    } else if (lt > rt) acctQueue();
+    } else if (lt > rt) await acctPush();
   } else {
-    acct.salt = crypto.getRandomValues(new Uint8Array(16));
-    acct.key = await vaultKey(password, acct.salt);
+    // No account copy yet (new account, or it was deleted on another phone): keep the key we have, or make one.
+    if (password) { acct.salt = crypto.getRandomValues(new Uint8Array(16)); acct.key = await vaultKey(password, acct.salt); }
+    if (!acct.key) throw new Error('signed-out');
+    if (owner && !mine) { st = freshState(); priv = Object.assign(freshPriv(), { preview: priv.preview, sound: priv.sound }); }
+    acct.pulled = true;
     await acctPush();
   }
   ls.set(OWNER_KEY, acct.session.user_id);
   await keyStore.put({ uid: acct.session.user_id, key: acct.key, salt: b64(acct.salt) });
-  setStatus('ok');
+  if (acct.status !== 'offline' && acct.status !== 'signedout') setStatus('ok');
 }
 
 /* ---------- Log in and create account ---------- */
@@ -161,11 +182,10 @@ async function acctGo(mode) {
 }
 async function acctLogout() {
   clearTimeout(pushTimer);
-  if (acct.key && acct.session) await acctPush();
-  if (acct.status !== 'ok') return sys("Not synced yet. Your latest changes haven't uploaded, so stay logged in and try again when online.");
+  if (acct.key && acct.session && acct.pulled) await acctPush();
+  if (acct.status !== 'ok' && !confirm("Your latest changes haven't synced. Log out anyway? Anything not synced will be lost from this phone.")) return;
   try { await authCall('logout', {}, acct.session.access_token); } catch (e) {}
-  acct.session = null; acct.key = null; acct.salt = null;
-  ls.del(SESSION_KEY); ls.del(OWNER_KEY); await keyStore.clear();
+  await forgetLogin();
   // Logging out clears this phone. Everything stays safe, encrypted, in the account.
   ls.del(KEY); ls.del(PKEY); st = freshState(); priv = freshPriv();
   setStatus('off'); closeSheet(); render(); sys('Logged out. Your progress is safe in your account.');
@@ -174,13 +194,15 @@ async function acctDelete() {
   if (!acct.session || !confirm('Delete the copy saved in your account? Your progress on this phone stays.')) return;
   try {
     await rest('DELETE', '?user_id=eq.' + acct.session.user_id);
-    acct.session = null; acct.key = null; ls.del(SESSION_KEY); ls.del(OWNER_KEY); await keyStore.clear();
+    await forgetLogin();
     setStatus('off'); sys('Account copy deleted. This phone keeps its progress.');
   } catch (e) { sys('Could not delete right now. Try again when you are online.'); }
 }
 
 /* ---------- Settings box ---------- */
 function acctHtml() {
+  if (acct.session && acct.status === 'signedout') return `<div class="small">Your session ended for <b>${esc(acct.session.email || '')}</b>. Log in again to keep syncing. Your progress is safe on this phone.</div>
+    <div class="row" style="margin-top:8px"><button class="btn" data-act="acctIn">Log in</button><button class="btn ghost small" data-act="acctOut">Log out</button></div>`;
   if (!acct.session || !acct.key) return `<div class="small muted">Make a free account to keep your progress safe and use it on any phone. Everything is encrypted on this phone first, so nobody else can read it.</div>
     <div class="row" style="margin-top:8px"><button class="btn" data-act="acctUp">Create account</button><button class="btn ghost" data-act="acctIn">Log in</button></div>`;
   const when = acct.last ? new Date(acct.last).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }) : 'not yet';
