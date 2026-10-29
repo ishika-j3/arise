@@ -2,7 +2,8 @@
 /* ARISE, Season 1.
    Two stores, both on this device only:
    - STATE (arise-state-v1): quests, gates, XP, setup. This is what will sync later.
-   - PRIV (arise-private-v1): mind checks, low-energy reasons, cycle, birthday. Never synced, never exported.
+   - PRIV (arise-private-v1): mind checks, low-energy reasons, cycle, birthday. Never in the backup file;
+     synced only inside the encrypted account copy, if the player makes an account.
 */
 
 /* ---------------- Constants ---------------- */
@@ -90,8 +91,41 @@ function freshPriv() {
 function load(k, fresh) {
   try { const v = JSON.parse(localStorage.getItem(k)); return v ? Object.assign(fresh(), v) : fresh(); } catch (e) { return fresh(); }
 }
-let st = load(KEY, freshState);
-let priv = load(PKEY, freshPriv);
+// Every copy that comes in (this phone, a backup file, the account) is cleaned first, so a crafted
+// file can't slip HTML or script into the page through fields that are shown as-is.
+const ID_RE = /^[gm]\d+$/;
+function cleanState(v) {
+  const s = Object.assign(freshState(), v && typeof v === 'object' ? v : {});
+  const list = x => (Array.isArray(x) ? x : []);
+  s.gates = list(s.gates).filter(g => g && ID_RE.test(String(g.id))).map(g => {
+    g.size = ['E', 'D', 'C', 'B'].includes(g.size) ? g.size : 'E';
+    g.repeat = ['daily', 'weekly'].includes(g.repeat) ? g.repeat : '';
+    g.path = PATHS[g.path] ? g.path : null;
+    g.state = ['open', 'waiting', 'sealed', 'done'].includes(g.state) ? g.state : 'open';
+    g.floorIdx = Math.max(0, parseInt(g.floorIdx, 10) || 0);
+    g.title = String(g.title || '');
+    if (g.raid) g.raid.be = Number.isFinite(Number(g.raid.be)) && g.raid.be !== null ? Number(g.raid.be) : null;
+    return g;
+  });
+  s.mirages = list(s.mirages).filter(m => m && ID_RE.test(String(m.id)));
+  s.ranks = Object.assign({}, s.ranks); Object.keys(PATHS).forEach(p => { if (!RANKS.includes(s.ranks[p])) s.ranks[p] = 'E'; });
+  s.titles = list(s.titles).filter(t => TITLES[t]); if (s.equipped && !TITLES[s.equipped]) s.equipped = null;
+  s.trialLog = list(s.trialLog).filter(x => x && PATHS[x.p] && RANKS.includes(x.to));
+  s.level = LEVELS[s.level] ? s.level : 'zero';
+  s.hidden = list(s.hidden).filter(p => HIDEABLE.includes(p));
+  s.tiers = Object.assign({}, s.tiers); Object.keys(s.tiers).forEach(k => { const n = parseInt(s.tiers[k], 10); if (Number.isFinite(n) && n >= 0) s.tiers[k] = n; else delete s.tiers[k]; });
+  s.seq = Math.max(1, parseInt(s.seq, 10) || 1);
+  return s;
+}
+function cleanPriv(v) {
+  const p = Object.assign(freshPriv(), v && typeof v === 'object' ? v : {});
+  p.low = Object.assign({}, p.low); Object.keys(p.low).forEach(k => { if (!LOW[p.low[k]]) delete p.low[k]; });
+  p.moodLog = Object.assign({}, p.moodLog); Object.keys(p.moodLog).forEach(k => { const n = Number(p.moodLog[k]); if (n >= 1 && n <= 5) p.moodLog[k] = n; else delete p.moodLog[k]; });
+  p.cycle = Object.assign(freshPriv().cycle, p.cycle); p.cycle.starts = (Array.isArray(p.cycle.starts) ? p.cycle.starts : []).filter(d => /^\d{4}-\d{2}-\d{2}$/.test(d));
+  return p;
+}
+let st = cleanState(load(KEY, freshState));
+let priv = cleanPriv(load(PKEY, freshPriv));
 // touch = a real change by the player. Upkeep on opening the app passes false, so an old phone
 // never looks newer than the account copy and overwrites it.
 function save(touch = true) {
@@ -181,7 +215,7 @@ const LADDERS = {
   ] },
 };
 function tierStart(id) { return (LADDERS[id].start[st.level] || 0); }
-function tierOf(id) { const t = st.tiers[id]; return t == null ? tierStart(id) : t; }
+function tierOf(id) { const t = st.tiers[id]; return t == null ? tierStart(id) : Math.min(t, LADDERS[id].steps.length - 1); }
 function stepText(id, t) { return [LADDERS[id].steps[t], LADDERS[id].min]; }
 // Days that count: since joining, not Safe Zone, and not a day with a low-energy reason (those are neutral).
 function countedDays(n) { const out = []; for (let i = 1; i <= n; i++) { const k = addDays(today(), -i); if (!st.created || k < st.created) break; if (!isSafe(k) && !priv.low[k]) out.push(k); } return out; }
@@ -629,7 +663,7 @@ function renderToday() {
     const w = wk();
     const item = (id, t, lane) => `<button class="btn small ${w.rituals[id] ? 'on' : ''}" data-act="ritual" data-id="${id}">${w.rituals[id] ? '✓ ' : ''}${t}</button>`;
     h += `<div class="card"><h3>This week</h3><div class="row">
-      ${paths().includes('guild') ? item('guild', pathName('guild') + ' check-in') : ''}${item('friend', 'Friend or family')}${item('joy', 'Creative or reading block')}
+      ${paths().includes('guild') ? item('guild', esc(pathName('guild')) + ' check-in') : ''}${item('friend', 'Friend or family')}${item('joy', 'Creative or reading block')}
       ${st.flags.wbActive && st.hostName ? item('wb', esc(st.hostName)) : ''}</div>
       <div class="small muted" style="margin-top:8px">Sunday review: ${w.reviewed ? 'done' : 'on the Week tab'}</div></div>`;
   }
@@ -665,12 +699,12 @@ function footerLinks() {
 
 /* ---------------- Render: Gates ---------------- */
 function gateRow(g) {
-  let meta = pathChip(g.path) + `<span class="chip">${g.size}</span>`;
+  let meta = pathChip(g.path) + `<span class="chip">${esc(g.size)}</span>`;
   if (g.date) meta += `<span class="chip ${g.date <= today() ? 'gold' : ''}">${nice(g.date)}</span>`;
   if (g.owner && g.owner !== 'me') meta += `<span class="chip sys">Commanded: ${esc(g.owner)}</span>`;
   if (g.state === 'waiting') meta += `<span class="chip">Waiting until ${nice(g.checkBack)}</span>`;
   if (g.back) meta += `<span class="chip gold">Check back</span>`;
-  if (g.repeat) meta += `<span class="chip">Repeats ${g.repeat}</span>`;
+  if (g.repeat) meta += `<span class="chip">Repeats ${esc(g.repeat)}</span>`;
   if (g.raid) meta += `<span class="chip gold">Raid${g.raid.grand ? ' (grandfathered)' : ''}</span>`;
   else if (g.avoid && g.floorIdx === 0) meta += `<span class="chip gold">Just start: ${esc(g.floors[0].t)}</span>`;
   else if (g.floors) meta += `<span class="chip sys">Dungeon</span>`;
@@ -836,7 +870,7 @@ function renderStatus() {
   paths().forEach(p => {
     const items = trialItems(p), ready = trialReady(p);
     const focus = p === 'body' || p === 'mind' ? 'Main Quest' : p === 'guild' ? 'Side Quest' : 'Holding the line';
-    h += `<div class="card"><div class="spread"><div class="row">${pathChip(p)}<span class="chip vio">Rank ${st.ranks[p]}</span></div><span class="small muted">${focus}</span></div>`;
+    h += `<div class="card"><div class="spread"><div class="row">${pathChip(p)}<span class="chip vio">Rank ${esc(st.ranks[p])}</span></div><span class="small muted">${focus}</span></div>`;
     if (p === 'body') h += `<div class="small muted" style="margin-top:6px">Starting level: ${esc((LEVELS[st.level] || LEVELS.zero).n)}</div>`;
     if (on('trials')) {
       h += items.length ? `<div class="small muted" style="margin:10px 0 4px">Path Trial to Rank ${RANKS[RANKS.indexOf(st.ranks[p]) + 1]}</div>` + items.map(it => `
@@ -866,7 +900,7 @@ function renderStatus() {
     h += `<h2>Reward chests</h2><div class="card">${st.chests.map(c => `<div class="small" style="padding:4px 0"><span class="vio">◆</span> ${esc(c.item)} <span class="muted">· ${nice(c.date)}</span></div>`).join('')}</div>`;
   }
   if (on('eras') && st.trialLog.length) {
-    h += `<h2>Era tracklist</h2><div class="card">${st.trialLog.map((x, i) => `<div class="small" style="padding:3px 0"><span class="muted">${i + 1}.</span> ${esc(pathName(x.p))}: Rank ${x.to} <span class="muted">· ${nice(x.date)}</span></div>`).join('')}</div>`;
+    h += `<h2>Era tracklist</h2><div class="card">${st.trialLog.map((x, i) => `<div class="small" style="padding:3px 0"><span class="muted">${i + 1}.</span> ${esc(pathName(x.p))}: Rank ${esc(x.to)} <span class="muted">· ${nice(x.date)}</span></div>`).join('')}</div>`;
   }
   return h + footerLinks();
 }
@@ -1044,7 +1078,7 @@ function sheetSettings() {
 function restore(e) {
   const f = e.target.files[0]; if (!f) return;
   const rd = new FileReader();
-  rd.onload = () => { try { const v = JSON.parse(rd.result); if (!v || v.v !== 1) throw 0; st = Object.assign(freshState(), v); save(); closeSheet(); render(); sys('Backup restored.'); } catch (x) { sys('That file is not an ARISE backup.'); } };
+  rd.onload = () => { try { const v = JSON.parse(rd.result); if (!v || v.v !== 1) throw 0; st = cleanState(v); save(); closeSheet(); render(); sys('Backup restored.'); } catch (x) { sys('That file is not an ARISE backup.'); } };
   rd.readAsText(f);
 }
 

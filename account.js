@@ -98,6 +98,8 @@ window.addEventListener('online', resync);
 
 function forgetLogin() {
   clearTimeout(pushTimer);
+  // end the session on the server too, so a copied token stops working
+  if (acct.session && acct.session.access_token) authCall('logout', {}, acct.session.access_token).catch(() => {});
   acct.session = null; acct.key = null; acct.salt = null; acct.pulled = false;
   ls.del(SESSION_KEY); ls.del(OWNER_KEY); return keyStore.clear();
 }
@@ -121,7 +123,7 @@ async function openVault(password) {
     acct.pulled = true;
     if (!mine || !st.onboarded || rt > lt) {
       const keep = {}; DEVICE_ONLY.forEach(k => { keep[k] = priv[k]; });
-      st = Object.assign(freshState(), remote.st); priv = Object.assign(freshPriv(), remote.priv || {}, keep);
+      st = cleanState(remote.st); priv = Object.assign(cleanPriv(remote.priv), keep);
       save(false); render(); if (st.onboarded) sys('Progress restored from your account.');
     } else if (lt > rt) await acctPush();
   } else {
@@ -184,7 +186,6 @@ async function acctLogout() {
   clearTimeout(pushTimer);
   if (acct.key && acct.session && acct.pulled) await acctPush();
   if (acct.status !== 'ok' && !confirm("Your latest changes haven't synced. Log out anyway? Anything not synced will be lost from this phone.")) return;
-  try { await authCall('logout', {}, acct.session.access_token); } catch (e) {}
   await forgetLogin();
   // Logging out clears this phone. Everything stays safe, encrypted, in the account.
   ls.del(KEY); ls.del(PKEY); st = freshState(); priv = freshPriv();
