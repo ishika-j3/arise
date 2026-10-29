@@ -13,8 +13,8 @@ const SIZE_MANA = { E: 1, D: 2, C: 3, B: 5 };
 const WEEK_MANA = { light: 25, normal: 18, heavy: 10 };
 const S1_WEEKS = 8, S2_WEEKS = 12;                  // season lengths; the start date is set by each player
 const PATHS = {
-  body: { n: 'Body', c: '#7fd3a8' }, mind: { n: 'Mind', c: '#b3a8f5' }, work: { n: 'Work', c: '#8cc2f2' },
-  guild: { n: 'Guild', c: '#f0c27f' }, life: { n: 'Life', c: '#f2a6c0' },
+  body: { n: 'Body', c: '#59c98b' }, mind: { n: 'Mind', c: '#a98bff' }, work: { n: 'Work', c: '#5aa9e6' },
+  guild: { n: 'Guild', c: '#e08a5a' }, life: { n: 'Life', c: '#e07aa5' },
 };
 const HIDEABLE = ['work', 'guild'];                // Body, Mind and Life are always on
 const LANE = { work: 'required', guild: 'optional', body: 'protected', mind: 'protected', life: 'protected' };
@@ -429,7 +429,7 @@ function sys(msg, kind) {
   el('toasts').appendChild(t);
   setTimeout(() => t.remove(), 4200);
 }
-function pathChip(p) { return p ? `<span class="chip path" style="background:${PATHS[p].c}">${esc(pathName(p))}</span>` : '<span class="chip gold">Sort me</span>'; }
+function pathChip(p) { return p ? `<span class="chip" style="color:${PATHS[p].c};border-color:${PATHS[p].c}66">${esc(pathName(p))}</span>` : '<span class="chip gold">Sort me</span>'; }
 function openSheet(html) { el('sheet').innerHTML = `<div class="sheet"><div class="grab"></div>${html}</div>`; el('sheet').hidden = false; }
 function closeSheet() { el('sheet').hidden = true; el('sheet').innerHTML = ''; }
 function ripple() { const r = document.createElement('div'); r.className = 'ripple'; document.body.appendChild(r); setTimeout(() => r.remove(), 1200); }
@@ -506,7 +506,7 @@ function renderToday() {
   h += `<div class="card"><div class="spread"><h3>Daily Quest</h3><span class="chip">Shown up: ${su.n} of the last ${su.d || 0} days</span></div>`;
   DAILY.forEach((q, i) => {
     const v = r[q.id], sh = st.shadows[q.id], txt = dq(q), tip = low && low[q.id];
-    const label = sh ? `<span class="chip gold">Shadow: ${esc(sh.name)}</span>` : '';
+    const label = sh ? `<span class="chip vio">Shadow: ${esc(sh.name)}</span>` : '';
     let acts;
     if (q.sheet) {
       acts = v ? `<button class="btn on small" data-act="sheet" data-s="${q.sheet}">${q.id === 'mind' ? 'Checked in' : 'Gates closed'}</button>`
@@ -522,7 +522,7 @@ function renderToday() {
   h += `</div>`;
 
   h += r.good
-    ? `<div class="card"><div class="spread"><div><h3>One small good thing</h3><div class="small" style="color:#c9f2dc">✓ ${esc(r.good)}</div></div>
+    ? `<div class="card"><div class="spread"><div><h3>One small good thing</h3><div class="small ok">✓ ${esc(r.good)}</div></div>
       <button class="btn ghost small" data-act="goodUndo">Change</button></div></div>`
     : `<div class="card"><h3>One small good thing</h3><div class="small muted">Pick one and do it. Mood often follows action, not the other way round.</div>
       <div class="row" style="margin-top:8px">${st.goodList.map((x, i) => `<button class="btn small" data-act="goodPick" data-i="${i}">${esc(x)}</button>`).join('')}</div></div>`;
@@ -588,7 +588,7 @@ function gateRow(g) {
   if (g.state === 'open' && !g.path) extra += `<div class="seg" style="margin-top:7px">${paths().map(p => `<button data-act="sortTo" data-id="${g.id}" data-p="${p}">${esc(pathName(p))}</button>`).join('')}</div>`;
   const canCheck = g.state === 'open' && g.path && !(g.raid && (g.floorIdx === 2 || g.floorIdx === 3) && !g.raid.grand);
   return `<div class="gate">${canCheck ? `<button class="check" data-act="clear" data-id="${g.id}" aria-label="Clear">✓</button>` : `<span style="width:26px"></span>`}
-    <div class="main" data-act="gate" data-id="${g.id}"><div class="title">${esc(g.title)}</div><div class="meta">${meta}</div>${extra}</div></div>`;
+    <div class="main${g.path ? " edge" : ""}" ${g.path ? `style="--edge:${PATHS[g.path].c}"` : ""} data-act="gate" data-id="${g.id}"><div class="title">${esc(g.title)}</div><div class="meta">${meta}</div>${extra}</div></div>`;
 }
 function renderGates() {
   if (lateNight() && !showLate && !priv.dateOverride) {
@@ -627,7 +627,7 @@ function renderGates() {
   if (commanded.length) h += `<h2>Commanded gates</h2><div class="small muted">What your guild is carrying for you.</div><div class="card">${commanded.map(gateRow).join('')}</div>`;
   if (waiting.length && on('waiting')) h += `<details class="card"><summary>${waiting.length} waiting, back on their dates</summary>${waiting.map(gateRow).join('')}</details>`;
   if (sealed.length) h += `<details class="card"><summary>${sealed.length} sealed gates</summary>${sealed.map(gateRow).join('')}</details>`;
-  if (done.length) h += `<details class="card"><summary>Recently cleared</summary>${done.map(g => `<div class="gate"><span style="width:26px" class="gold">✓</span><div class="main" data-act="gate" data-id="${g.id}"><div class="title muted">${esc(g.title)}</div></div></div>`).join('')}</details>`;
+  if (done.length) h += `<details class="card"><summary>Recently cleared</summary>${done.map(g => `<div class="gate"><span style="width:26px" class="ok">✓</span><div class="main" data-act="gate" data-id="${g.id}"><div class="title muted">${esc(g.title)}</div></div></div>`).join('')}</details>`;
   return h;
 }
 function mirageWindow() { const d = dow(today()); return priv.preview || mirageOpenNow || d === 0 || d === 3; }
@@ -702,7 +702,7 @@ function renderWeek() {
   const open = st.mirages.filter(m => m.status === 'open');
   if (open.length && on('mirages')) h += `<h2>Mirage window</h2><div class="card"><button class="btn" data-act="mirOpen">Open the window (${open.length})</button></div>`;
 
-  h += `<div class="card" style="margin-top:18px">${w.reviewed ? '<div class="gold">Review done for this week.</div>' : '<button class="btn gold" data-act="finishReview">Finish review</button>'}</div>`;
+  h += `<div class="card" style="margin-top:18px">${w.reviewed ? '<div class="ok">Review done for this week.</div>' : '<button class="btn gold" data-act="finishReview">Finish review</button>'}</div>`;
 
   if (st.flags.oneThing) h += `<div class="small muted">Last "one thing": ${esc(st.flags.oneThing)}</div>`;
 
@@ -741,11 +741,11 @@ function renderStatus() {
   paths().forEach(p => {
     const items = trialItems(p), ready = trialReady(p);
     const focus = p === 'body' || p === 'mind' ? 'Main Quest' : p === 'guild' ? 'Side Quest' : 'Holding the line';
-    h += `<div class="card"><div class="spread"><div class="row">${pathChip(p)}<span class="chip gold">Rank ${st.ranks[p]}</span></div><span class="small muted">${focus}</span></div>`;
+    h += `<div class="card"><div class="spread"><div class="row">${pathChip(p)}<span class="chip vio">Rank ${st.ranks[p]}</span></div><span class="small muted">${focus}</span></div>`;
     if (p === 'body') h += `<div class="small muted" style="margin-top:6px">Starting level: ${esc((LEVELS[st.level] || LEVELS.zero).n)}</div>`;
     if (on('trials')) {
       h += items.length ? `<div class="small muted" style="margin:10px 0 4px">Path Trial to Rank ${RANKS[RANKS.indexOf(st.ranks[p]) + 1]}</div>` + items.map(it => `
-        <div class="spread small" style="padding:5px 0"><span>${it.done ? '<span class="gold">✓</span> ' : ''}${esc(it.t)}</span>
+        <div class="spread small" style="padding:5px 0"><span>${it.done ? '<span class="ok">✓</span> ' : ''}${esc(it.t)}</span>
         ${it.auto ? `<span class="chip">${it.n} / ${it.of}</span>` : `<button class="btn small ${it.done ? 'on' : ''}" data-act="tick" data-p="${p}" data-i="${it.i}">${it.done ? 'Done' : 'Mark done'}</button>`}</div>`).join('')
         : '<div class="small muted" style="margin-top:8px">The next trials get written at the Season review.</div>';
       if (ready) h += `<button class="btn gold" style="margin-top:8px" data-act="clearTrial" data-p="${p}">Clear the Path Trial</button>`;
@@ -760,7 +760,7 @@ function renderStatus() {
     h += `<h2>Shadow Army</h2><div class="card">`;
     h += ready.map(q => `<div class="system"><div class="line">${esc(q.t)} has held for 30 days. Extract it?</div>
       <button class="btn gold small" style="margin-top:8px" data-act="arise" data-id="${q.id}">ARISE</button></div>`).join('');
-    h += army.length ? army.map(([id, s]) => `<div class="spread" style="padding:6px 0"><span><b class="gold">${esc(s.name)}</b> <span class="muted small">carries ${esc(DAILY.find(q => q.id === id).t.toLowerCase())}</span></span><span class="small muted">since ${nice(s.date)}</span></div>`).join('')
+    h += army.length ? army.map(([id, s]) => `<div class="spread" style="padding:6px 0"><span><b class="vio">${esc(s.name)}</b> <span class="muted small">carries ${esc(DAILY.find(q => q.id === id).t.toLowerCase())}</span></span><span class="small muted">since ${nice(s.date)}</span></div>`).join('')
       : (ready.length ? '' : '<div class="small muted">Your first Shadow can rise once a daily item has held on 24 of 30 days. Its name is waiting: Igris.</div>');
     h += `</div>`;
   }
@@ -768,7 +768,7 @@ function renderStatus() {
     h += `<h2>Titles</h2><div class="card"><div class="row">${st.titles.map(t => `<button class="btn small ${st.equipped === t ? 'on' : ''}" data-act="equip" data-t="${t}">${esc(TITLES[t])}</button>`).join('')}</div></div>`;
   }
   if (on('chests') && st.chests.length) {
-    h += `<h2>Reward chests</h2><div class="card">${st.chests.map(c => `<div class="small" style="padding:4px 0"><span class="gold">◆</span> ${esc(c.item)} <span class="muted">· ${nice(c.date)}</span></div>`).join('')}</div>`;
+    h += `<h2>Reward chests</h2><div class="card">${st.chests.map(c => `<div class="small" style="padding:4px 0"><span class="vio">◆</span> ${esc(c.item)} <span class="muted">· ${nice(c.date)}</span></div>`).join('')}</div>`;
   }
   if (on('eras') && st.trialLog.length) {
     h += `<h2>Era tracklist</h2><div class="card">${st.trialLog.map((x, i) => `<div class="small" style="padding:3px 0"><span class="muted">${i + 1}.</span> ${esc(pathName(x.p))}: Rank ${x.to} <span class="muted">· ${nice(x.date)}</span></div>`).join('')}</div>`;
@@ -797,7 +797,7 @@ function sheetGate(id) {
   const seg = (name, opts, cur, labels) => `<div class="seg">${opts.map((o, i) => `<button class="${cur === o ? 'sel' : ''}" data-act="gset" data-id="${g.id}" data-f="${name}" data-v="${o}">${labels ? labels[i] : o}</button>`).join('')}</div>`;
   let floorsHtml = '';
   if (g.floors) {
-    floorsHtml = `<label class="f">${g.raid ? 'Raid floors' : 'Floors'}</label>` + g.floors.map((f, i) => `<div class="small" style="padding:3px 0">${i < g.floorIdx ? '<span class="gold">✓</span>' : i === g.floorIdx ? '<span style="color:var(--sys)">›</span>' : '<span class="muted">·</span>'} ${esc(f.t)}${g.raid && g.raid.skipped[i] ? ' <span class="muted">(skipped)</span>' : ''}</div>`).join('');
+    floorsHtml = `<label class="f">${g.raid ? 'Raid floors' : 'Floors'}</label>` + g.floors.map((f, i) => `<div class="small" style="padding:3px 0">${i < g.floorIdx ? '<span class="ok">✓</span>' : i === g.floorIdx ? '<span style="color:var(--sys)">›</span>' : '<span class="muted">·</span>'} ${esc(f.t)}${g.raid && g.raid.skipped[i] ? ' <span class="muted">(skipped)</span>' : ''}</div>`).join('');
     if (g.state === 'open' && g.floorIdx < g.floors.length) {
       const i = g.floorIdx;
       if (g.raid && i === 2) floorsHtml += `<div class="row" style="margin-top:8px;flex-wrap:nowrap"><div style="flex:1"><label class="f">Total costs (Rs)</label><input type="number" id="rcost" value="${esc(g.raid.costs)}"></div>
